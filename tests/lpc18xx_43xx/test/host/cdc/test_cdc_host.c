@@ -39,7 +39,7 @@
 #include "stdlib.h"
 #include "unity.h"
 #include "tusb_option.h"
-#include "errors.h"
+#include "tusb_errors.h"
 #include "binary.h"
 #include "type_helper.h"
 
@@ -50,7 +50,10 @@
 
 #include "descriptor_cdc.h"
 #include "cdc_host.h"
+
+#if TUSB_CFG_HOST_CDC_RNDIS // TODO enable
 #include "cdc_rndis_host.h"
+#endif
 
 static uint8_t dev_addr;
 static uint16_t length;
@@ -195,7 +198,7 @@ void test_cdch_close_device(void)
   hcd_pipe_close_ExpectAndReturn(pipe_int          , TUSB_ERROR_NONE);
   hcd_pipe_close_ExpectAndReturn(pipe_out          , TUSB_ERROR_NONE);
 
-  tusbh_cdc_unmounted_isr_Expect(dev_addr);
+  tusbh_cdc_unmounted_cb_Expect(dev_addr);
 
   //------------- CUT -------------//
   cdch_close(dev_addr);

@@ -36,34 +36,28 @@
 */
 /**************************************************************************/
 
-/** \ingroup TBD
- *  \defgroup TBD
- *  \brief TBD
- *
- *  @{
- */
-
 #ifndef _TUSB_HAL_LPC175X_6X_H_
 #define _TUSB_HAL_LPC175X_6X_H_
+
+#include "LPC17xx.h"
+#include "lpc17xx_pinsel.h"
 
 #ifdef __cplusplus
  extern "C" {
 #endif
 
-#include "LPC17xx.h"
-
 //--------------------------------------------------------------------+
 //
 //--------------------------------------------------------------------+
-static inline void hal_interrupt_enable(uint8_t controller_id)
+static inline void hal_interrupt_enable(uint8_t coreid)
 {
-  (void) controller_id; // discard compiler's warning
+  (void) coreid; // discard compiler's warning
   NVIC_EnableIRQ(USB_IRQn);
 }
 
-static inline void hal_interrupt_disable(uint8_t controller_id)
+static inline void hal_interrupt_disable(uint8_t coreid)
 {
-  (void) controller_id; // discard compiler's warning
+  (void) coreid; // discard compiler's warning
   NVIC_DisableIRQ(USB_IRQn);
 }
 
@@ -73,4 +67,3 @@ static inline void hal_interrupt_disable(uint8_t controller_id)
 
 #endif /* _TUSB_HAL_LPC175X_6X_H_ */
 
-/** @} */

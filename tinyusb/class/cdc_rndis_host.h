@@ -36,12 +36,9 @@
 */
 /**************************************************************************/
 
-/** \ingroup TBD
- *  \defgroup TBD
- *  \brief TBD
- *
- *  @{
- */
+/** \ingroup CDC_RNDIS
+ * \defgroup CDC_RNSID_Host Host
+ *  @{ */
 
 #ifndef _TUSB_CDC_RNDIS_HOST_H_
 #define _TUSB_CDC_RNDIS_HOST_H_
@@ -63,6 +60,7 @@ typedef struct {
   OSAL_SEM_DEF(semaphore_notification);
   osal_semaphore_handle_t sem_notification_hdl;  // used to wait on notification pipe
   uint32_t max_xfer_size; // got from device's msg initialize complete
+  uint8_t mac_address[6];
 }rndish_data_t;
 
 void rndish_init(void);

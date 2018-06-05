@@ -39,19 +39,19 @@
 #include "common/common.h"
 #include "hal.h"
 
-#if MCU == MCU_LPC13UXX
+#if TUSB_CFG_MCU == MCU_LPC13UXX
 
 tusb_error_t hal_init(void)
 {
 	// TODO remove magic number
-  /* Enable AHB clock to the USB block and USB RAM. */
-  LPC_SYSCON->SYSAHBCLKCTRL |= ((0x1<<14) | (0x1<<27));
+  LPC_SYSCON->SYSAHBCLKCTRL |= ((0x1<<14) | (0x1<<27)); /* Enable AHB clock to the USB block and USB RAM. */
+  LPC_SYSCON->PDRUNCFG &= ~( BIT_(8) | BIT_(10) ); // enable USB PLL & USB transceiver
 
   /* Pull-down is needed, or internally, VBUS will be floating. This is to
   address the wrong status in VBUSDebouncing bit in CmdStatus register.  */
   // set PIO0_3 as USB_VBUS
   LPC_IOCON->PIO0_3   &= ~0x1F;
-  LPC_IOCON->PIO0_3   |= (0x01<<0);            /* Secondary function VBUS */
+  LPC_IOCON->PIO0_3   |= (0x01<<0) | (1 << 3);            /* Secondary function VBUS */
 
   // set PIO0_6 as usb connect
   LPC_IOCON->PIO0_6   &= ~0x07;

@@ -32,18 +32,18 @@
     
   :source:
     - ../../tinyusb/**
-    - +:../../demos/bsp/lpc43xx/**
-    - +:../../demos/device/keyboard/*
+    - +:../../mcu/lpc43xx/**
+    #- +:../../demos/device/keyboard/*
     - -:../../demos/
-    - ../../vendor/freertos/freertos/Source/*
-    - ../../vendor/freertos/freertos/Source/portable/MSVC-MingW/*
+    #- ../../vendor/freertos/freertos/Source/*
+    #- ../../vendor/freertos/freertos/Source/portable/MSVC-MingW/*
 
 :defines:
   # in order to add common defines:
   #  1) remove the trailing [] from the :common: section
   #  2) add entries to the :common: section (e.g. :test: has TEST defined)
   :commmon: &common_defines 
-    - MCU=MCU_LPC43XX -std=gnu99 
+    - TUSB_CFG_MCU=MCU_LPC43XX -std=gnu99 
 #    - -mx32
     - CORE_M4
     - __CODE_RED

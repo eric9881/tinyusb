@@ -36,18 +36,8 @@
 */
 /**************************************************************************/
 
-/** \file
- *  \brief TBD
- *
- *  \note TBD
- */
-
-/** \ingroup TBD
- *  \defgroup TBD
- *  \brief TBD
- *
- *  @{
- */
+/** \ingroup Group_HCD
+ *  @{ */
 
 #ifndef _TUSB_USBH_HCD_H_
 #define _TUSB_USBH_HCD_H_
@@ -60,10 +50,10 @@
 // INCLUDE
 //--------------------------------------------------------------------+
 #include "common/common.h"
+#include "osal/osal.h"
 
 #ifdef _TEST_
 #include "hcd.h"
-#include "osal.h"
 #endif
 
 //--------------------------------------------------------------------+
@@ -76,7 +66,7 @@ typedef struct ATTR_ALIGNED(4){
   uint8_t reserve;
 } usbh_enumerate_t;
 
-typedef struct { // TODO internal structure, re-order members
+typedef struct {
   //------------- port -------------//
   uint8_t core_id;
   uint8_t hub_addr;
@@ -98,6 +88,7 @@ typedef struct { // TODO internal structure, re-order members
   //------------- control pipe -------------//
   struct {
     volatile uint8_t pipe_status;
+//    uint8_t xferred_bytes; TODO not yet necessary
     tusb_control_request_t request;
 
     OSAL_SEM_DEF(semaphore);          // TODO move to semaphore pool ?
@@ -114,8 +105,8 @@ extern usbh_device_info_t usbh_devices[TUSB_CFG_HOST_DEVICE_MAX+1]; // including
 // callback from HCD ISR
 //--------------------------------------------------------------------+
 void usbh_xfer_isr(pipe_handle_t pipe_hdl, uint8_t class_code, tusb_event_t event, uint32_t xferred_bytes);
-void usbh_device_plugged_isr(uint8_t hostid);
-void usbh_device_unplugged_isr(uint8_t hostid);
+void usbh_hcd_rhport_plugged_isr(uint8_t hostid);
+void usbh_hcd_rhport_unplugged_isr(uint8_t hostid);
 
 #ifdef __cplusplus
  }

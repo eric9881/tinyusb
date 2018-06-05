@@ -36,41 +36,24 @@
 */
 /**************************************************************************/
 
-/** \file
- *  \brief TBD
- *
- *  \note TBD
- */
-
-/** \ingroup TBD
- *  \defgroup TBD
- *  \brief TBD
- *
- *  @{
- */
-
 #ifndef _TUSB_HAL_LPC11UXX_H_
 #define _TUSB_HAL_LPC11UXX_H_
 
 #include "LPC11Uxx.h"
 
-#define NXP_ROMDRIVER_REG_BASE          LPC_USB_BASE
-#define NXP_ROMDRIVER_FUNCTION_ADDR     0x1FFF1FF8
-
 #ifdef __cplusplus
  extern "C" {
 #endif
 
-
-static inline void hal_interrupt_enable(uint8_t controller_id)
+static inline void hal_interrupt_enable(uint8_t coreid)
 {
-  (void) controller_id; // discard compiler's warning
+  (void) coreid; // discard compiler's warning
   NVIC_EnableIRQ(USB_IRQn);
 }
 
-static inline void hal_interrupt_disable(uint8_t controller_id)
+static inline void hal_interrupt_disable(uint8_t coreid)
 {
-  (void) controller_id; // discard compiler's warning
+  (void) coreid; // discard compiler's warning
   NVIC_DisableIRQ(USB_IRQn);
 }
 
@@ -79,5 +62,3 @@ static inline void hal_interrupt_disable(uint8_t controller_id)
 #endif
 
 #endif /* _TUSB_HAL_LPC11UXX_H_ */
-
-/** @} */

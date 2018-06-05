@@ -47,7 +47,6 @@
 //--------------------------------------------------------------------+
 #include "common/common.h"
 #include "cdc_host.h"
-#include "cdc_rndis_host.h"
 
 //--------------------------------------------------------------------+
 // MACRO CONSTANT TYPEDEF
@@ -56,7 +55,18 @@
 //--------------------------------------------------------------------+
 // INTERNAL OBJECT & FUNCTION DECLARATION
 //--------------------------------------------------------------------+
-/*STATIC_*/ cdch_data_t cdch_data[TUSB_CFG_HOST_DEVICE_MAX];
+STATIC_VAR cdch_data_t cdch_data[TUSB_CFG_HOST_DEVICE_MAX]; // TODO to be static
+
+static inline cdc_pipeid_t get_app_pipeid(pipe_handle_t pipe_hdl) ATTR_PURE  ATTR_ALWAYS_INLINE;
+static inline cdc_pipeid_t get_app_pipeid(pipe_handle_t pipe_hdl)
+{
+  cdch_data_t const * p_cdc = &cdch_data[pipe_hdl.dev_addr-1];
+
+  return pipehandle_is_equal( pipe_hdl, p_cdc->pipe_notification ) ? CDC_PIPE_NOTIFICATION :
+         pipehandle_is_equal( pipe_hdl, p_cdc->pipe_in           ) ? CDC_PIPE_DATA_IN      :
+         pipehandle_is_equal( pipe_hdl, p_cdc->pipe_out          ) ? CDC_PIPE_DATA_OUT     : CDC_PIPE_ERROR;
+}
+
 
 STATIC_ INLINE_ bool tusbh_cdc_is_mounted(uint8_t dev_addr) ATTR_PURE ATTR_ALWAYS_INLINE ATTR_WARN_UNUSED_RESULT;
 STATIC_ INLINE_ bool tusbh_cdc_is_mounted(uint8_t dev_addr)
@@ -70,20 +80,33 @@ STATIC_ INLINE_ bool tusbh_cdc_is_mounted(uint8_t dev_addr)
 #endif
 }
 
-static inline cdc_pipeid_t get_app_pipeid(pipe_handle_t pipe_hdl) ATTR_PURE  ATTR_ALWAYS_INLINE;
-static inline cdc_pipeid_t get_app_pipeid(pipe_handle_t pipe_hdl)
+bool tuh_cdc_is_busy(uint8_t dev_addr, cdc_pipeid_t pipeid)
 {
-  cdch_data_t const * p_cdc = &cdch_data[pipe_hdl.dev_addr-1];
+  if ( !tusbh_cdc_is_mounted(dev_addr) ) return false;
 
-  return pipehandle_is_equal( pipe_hdl, p_cdc->pipe_notification ) ? CDC_PIPE_NOTIFICATION :
-         pipehandle_is_equal( pipe_hdl, p_cdc->pipe_in           ) ? CDC_PIPE_DATA_IN :
-         pipehandle_is_equal( pipe_hdl, p_cdc->pipe_out          ) ? CDC_PIPE_DATA_OUT : 0;
+  cdch_data_t const * p_cdc = &cdch_data[dev_addr-1];
+
+  switch (pipeid)
+  {
+    case CDC_PIPE_NOTIFICATION:
+      return hcd_pipe_is_busy( p_cdc->pipe_notification );
+
+    case CDC_PIPE_DATA_IN:
+      return hcd_pipe_is_busy( p_cdc->pipe_in );
+
+    case CDC_PIPE_DATA_OUT:
+      return hcd_pipe_is_busy( p_cdc->pipe_out );
+
+    default:
+      return false;
+  }
 }
+
 
 //--------------------------------------------------------------------+
 // APPLICATION API (parameter validation needed)
 //--------------------------------------------------------------------+
-bool tusbh_cdc_serial_is_mounted(uint8_t dev_addr)
+bool tuh_cdc_serial_is_mounted(uint8_t dev_addr)
 {
   // TODO consider all AT Command as serial candidate
   return tusbh_cdc_is_mounted(dev_addr)                                         &&
@@ -91,30 +114,24 @@ bool tusbh_cdc_serial_is_mounted(uint8_t dev_addr)
       (cdch_data[dev_addr-1].interface_protocol <= CDC_COMM_PROTOCOL_ATCOMMAND_CDMA);
 }
 
-tusb_error_t tusbh_cdc_send(uint8_t dev_addr, void const * p_data, uint32_t length, bool is_notify)
+tusb_error_t tuh_cdc_send(uint8_t dev_addr, void const * p_data, uint32_t length, bool is_notify)
 {
   ASSERT( tusbh_cdc_is_mounted(dev_addr),  TUSB_ERROR_CDCH_DEVICE_NOT_MOUNTED);
   ASSERT( p_data != NULL && length, TUSB_ERROR_INVALID_PARA);
 
   pipe_handle_t pipe_out = cdch_data[dev_addr-1].pipe_out;
-  if ( !hcd_pipe_is_idle(pipe_out) )
-  {
-    return TUSB_ERROR_INTERFACE_IS_BUSY;
-  }
+  if ( hcd_pipe_is_busy(pipe_out) ) return TUSB_ERROR_INTERFACE_IS_BUSY;
 
   return hcd_pipe_xfer( pipe_out, (void *) p_data, length, is_notify);
 }
 
-tusb_error_t tusbh_cdc_receive(uint8_t dev_addr, void * p_buffer, uint32_t length, bool is_notify)
+tusb_error_t tuh_cdc_receive(uint8_t dev_addr, void * p_buffer, uint32_t length, bool is_notify)
 {
   ASSERT( tusbh_cdc_is_mounted(dev_addr),  TUSB_ERROR_CDCH_DEVICE_NOT_MOUNTED);
   ASSERT( p_buffer != NULL && length, TUSB_ERROR_INVALID_PARA);
 
   pipe_handle_t pipe_in = cdch_data[dev_addr-1].pipe_in;
-  if ( !hcd_pipe_is_idle(pipe_in) )
-  {
-    return TUSB_ERROR_INTERFACE_IS_BUSY;
-  }
+  if ( hcd_pipe_is_busy(pipe_in) ) return TUSB_ERROR_INTERFACE_IS_BUSY;
 
   return hcd_pipe_xfer( pipe_in, p_buffer, length, is_notify);
 }
@@ -125,30 +142,26 @@ tusb_error_t tusbh_cdc_receive(uint8_t dev_addr, void * p_buffer, uint32_t lengt
 void cdch_init(void)
 {
   memclr_(cdch_data, sizeof(cdch_data_t)*TUSB_CFG_HOST_DEVICE_MAX);
-#if TUSB_CFG_HOST_CDC_RNDIS
-  rndish_init();
-#endif
 }
 
 tusb_error_t cdch_open_subtask(uint8_t dev_addr, tusb_descriptor_interface_t const *p_interface_desc, uint16_t *p_length)
 {
-  tusb_error_t error;
-
   OSAL_SUBTASK_BEGIN
+  // TODO change following assert to subtask_assert
 
-  if ( CDC_COMM_SUBCLASS_ABSTRACT_CONTROL_MODEL != p_interface_desc->bInterfaceSubClass)
-  {
-    return TUSB_ERROR_CDCH_UNSUPPORTED_SUBCLASS;
-  }
+  if ( CDC_COMM_SUBCLASS_ABSTRACT_CONTROL_MODEL != p_interface_desc->bInterfaceSubClass) return TUSB_ERROR_CDC_UNSUPPORTED_SUBCLASS;
 
   if ( !(is_in_range(CDC_COMM_PROTOCOL_ATCOMMAND, p_interface_desc->bInterfaceProtocol, CDC_COMM_PROTOCOL_ATCOMMAND_CDMA) ||
          0xff == p_interface_desc->bInterfaceProtocol) )
   {
-    return TUSB_ERROR_CDCH_UNSUPPORTED_PROTOCOL;
+    return TUSB_ERROR_CDC_UNSUPPORTED_PROTOCOL;
   }
 
-  uint8_t const * p_desc = descriptor_next ( (uint8_t const *) p_interface_desc );
-  cdch_data_t * p_cdc = &cdch_data[dev_addr-1]; // non-static variable cannot be used after OS service call
+  uint8_t const * p_desc;
+  cdch_data_t * p_cdc;
+
+  p_desc = descriptor_next ( (uint8_t const *) p_interface_desc );
+  p_cdc  = &cdch_data[dev_addr-1]; // non-static variable cannot be used after OS service call
 
   p_cdc->interface_number   = p_interface_desc->bInterfaceNumber;
   p_cdc->interface_protocol = p_interface_desc->bInterfaceProtocol; // TODO 0xff is consider as rndis candidate, other is virtual Com
@@ -188,7 +201,8 @@ tusb_error_t cdch_open_subtask(uint8_t dev_addr, tusb_descriptor_interface_t con
     for(uint32_t i=0; i<2; i++)
     {
       tusb_descriptor_endpoint_t const *p_endpoint = (tusb_descriptor_endpoint_t const *) p_desc;
-      ASSERT_INT(TUSB_DESC_TYPE_ENDPOINT, p_endpoint->bDescriptorType, TUSB_ERROR_CDCH_DESCRIPTOR_CORRUPTED);
+      ASSERT_INT(TUSB_DESC_TYPE_ENDPOINT, p_endpoint->bDescriptorType, TUSB_ERROR_USBH_DESCRIPTOR_CORRUPTED);
+      ASSERT_INT(TUSB_XFER_BULK, p_endpoint->bmAttributes.xfer, TUSB_ERROR_USBH_DESCRIPTOR_CORRUPTED);
 
       pipe_handle_t * p_pipe_hdl =  ( p_endpoint->bEndpointAddress &  TUSB_DIR_DEV_TO_HOST_MASK ) ?
           &p_cdc->pipe_in : &p_cdc->pipe_out;
@@ -201,28 +215,9 @@ tusb_error_t cdch_open_subtask(uint8_t dev_addr, tusb_descriptor_interface_t con
     }
   }
 
-#if TUSB_CFG_HOST_CDC_RNDIS // TODO move to rndis_host.c
-  //------------- RNDIS -------------//
-  if ( 0xff == cdch_data[dev_addr-1].interface_protocol && pipehandle_is_valid(cdch_data[dev_addr-1].pipe_notification) )
-  {
-    cdch_data[dev_addr-1].is_rndis = true; // set as true at first
-
-    OSAL_SUBTASK_INVOKED_AND_WAIT( rndish_open_subtask(dev_addr, &cdch_data[dev_addr-1]), error );
-
-    if (TUSB_ERROR_NONE != error)
-    {
-      cdch_data[dev_addr-1].is_rndis = false;
-    }
-  }
-
-  if ( !cdch_data[dev_addr-1].is_rndis ) // device is not an rndis
-#endif
   {
     // FIXME mounted class flag is not set yet
-    if (tusbh_cdc_mounted_cb)
-    {
-      tusbh_cdc_mounted_cb(dev_addr);
-    }
+    tuh_cdc_mounted_cb(dev_addr);
   }
 
   OSAL_SUBTASK_END
@@ -230,61 +225,20 @@ tusb_error_t cdch_open_subtask(uint8_t dev_addr, tusb_descriptor_interface_t con
 
 void cdch_isr(pipe_handle_t pipe_hdl, tusb_event_t event, uint32_t xferred_bytes)
 {
-  cdch_data_t *p_cdc = &cdch_data[pipe_hdl.dev_addr - 1];
-
-#if TUSB_CFG_HOST_CDC_RNDIS
-  if ( p_cdc->is_rndis )
-  {
-    rndish_xfer_isr(p_cdc, pipe_hdl, event, xferred_bytes);
-  } else
-#endif
-  if (tusbh_cdc_xfer_isr)
-  {
-    tusbh_cdc_xfer_isr( pipe_hdl.dev_addr, event, get_app_pipeid(pipe_hdl), xferred_bytes );
-  }
+  tuh_cdc_xfer_isr( pipe_hdl.dev_addr, event, get_app_pipeid(pipe_hdl), xferred_bytes );
 }
 
 void cdch_close(uint8_t dev_addr)
 {
-  tusb_error_t err1, err2, err3;
   cdch_data_t * p_cdc = &cdch_data[dev_addr-1];
 
-#if TUSB_CFG_HOST_CDC_RNDIS
-  if (p_cdc->is_rndis)
-  {
-    rndish_close(dev_addr);
-  }
-#endif
-
-  if ( pipehandle_is_valid(p_cdc->pipe_notification) )
-  {
-    err1 = hcd_pipe_close(p_cdc->pipe_notification);
-  }
-
-  if ( pipehandle_is_valid(p_cdc->pipe_in) )
-  {
-    err2 = hcd_pipe_close(p_cdc->pipe_in);
-  }
-
-  if ( pipehandle_is_valid(p_cdc->pipe_out) )
-  {
-    err3 = hcd_pipe_close(p_cdc->pipe_out);
-  }
-
-#if TUSB_CFG_HOST_CDC_RNDIS
-
-#endif
+  (void) hcd_pipe_close(p_cdc->pipe_notification);
+  (void) hcd_pipe_close(p_cdc->pipe_in);
+  (void) hcd_pipe_close(p_cdc->pipe_out);
 
   memclr_(p_cdc, sizeof(cdch_data_t));
 
-  if (tusbh_cdc_unmounted_isr)
-  {
-    tusbh_cdc_unmounted_isr(dev_addr);
-  }
-
-  ASSERT(err1 == TUSB_ERROR_NONE &&
-         err2 == TUSB_ERROR_NONE &&
-         err3 == TUSB_ERROR_NONE, (void) 0 );
+  tuh_cdc_unmounted_cb(dev_addr);
 
 }
 

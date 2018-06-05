@@ -39,21 +39,22 @@
 #include "stdlib.h"
 #include "unity.h"
 #include "tusb_option.h"
-#include "errors.h"
+#include "tusb_errors.h"
 #include "binary.h"
 #include "type_helper.h"
+#include "common/common.h"
 
 #include "descriptor_test.h"
 #include "mock_osal.h"
 #include "mock_hcd.h"
 #include "mock_usbh.h"
-
 #include "hid_host.h"
+#include "mock_hidh_callback.h"
 
 uint8_t dev_addr;
 pipe_handle_t pipe_hdl;
 
-extern hidh_interface_info_t keyboard_data[TUSB_CFG_HOST_DEVICE_MAX];
+extern hidh_interface_info_t keyboardh_data[TUSB_CFG_HOST_DEVICE_MAX];
 
 tusb_descriptor_interface_t const *p_kbd_interface_desc = &desc_configuration.keyboard_interface;
 tusb_hid_descriptor_hid_t   const *p_kbh_hid_desc       = &desc_configuration.keyboard_hid;
@@ -85,13 +86,14 @@ void tearDown(void)
 
 void test_hidh_close(void)
 {
-  keyboard_data[dev_addr-1].pipe_hdl = pipe_hdl;
-  keyboard_data[dev_addr-1].report_size = 8;
+  keyboardh_data[dev_addr-1].pipe_hdl = pipe_hdl;
+  keyboardh_data[dev_addr-1].report_size = 8;
 
   hcd_pipe_close_ExpectAndReturn(pipe_hdl, TUSB_ERROR_NONE);
+  tusbh_hid_keyboard_unmounted_cb_Expect(dev_addr);
 
   //------------- Code Under TEST -------------//
   hidh_close(dev_addr);
 
-  TEST_ASSERT_MEM_ZERO(&keyboard_data[dev_addr-1], sizeof(hidh_interface_info_t));
+  TEST_ASSERT_MEM_ZERO(&keyboardh_data[dev_addr-1], sizeof(hidh_interface_info_t));
 }

@@ -52,28 +52,43 @@ tusb_error_t tusb_init(void)
   ASSERT_STATUS ( usbd_init() ); // device stack init
 #endif
 
+#if (TUSB_CFG_CONTROLLER_0_MODE)
+  hal_interrupt_enable(0);
+#endif
+
+#if (TUSB_CFG_CONTROLLER_1_MODE)
+  hal_interrupt_enable(1);
+#endif
+
   return TUSB_ERROR_NONE;
 }
 
-// called from hal layer
-void tusb_isr(uint8_t controller_id)
+/** \ingroup group_application_api
+ * \brief USB interrupt handler
+ * \param[in]  coreid Controller ID where the interrupt happened
+ * \note This function must be called by HAL layer or Application for the stack to manage USB events/transfers.
+ */
+void tusb_isr(uint8_t coreid)
 {
 #if MODE_HOST_SUPPORTED
-  hcd_isr(controller_id);
+  hcd_isr(coreid);
 #endif
 
 #if MODE_DEVICE_SUPPORTED
-  dcd_isr(controller_id);
+  dcd_isr(coreid);
 #endif
 
 }
 
 #if TUSB_CFG_OS == TUSB_OS_NONE
-// periodically/continuously called in the main loop
 void tusb_task_runner(void)
 {
   #if MODE_HOST_SUPPORTED
   usbh_enumeration_task(NULL);
+  #endif
+
+  #if MODE_DEVICE_SUPPORTED
+  usbd_task(NULL);
   #endif
 }
 #endif

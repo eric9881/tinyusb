@@ -36,18 +36,9 @@
 */
 /**************************************************************************/
 
-/** \file
- *  \brief TBD
- *
- *  \note TBD
- */
-
-/** \ingroup TBD
- *  \defgroup TBD
- *  \brief TBD
- *
- *  @{
- */
+/** \ingroup group_osal
+ * \defgroup Group_OSNone None OS
+ *  @{ */
 
 #ifndef _TUSB_OSAL_NONE_H_
 #define _TUSB_OSAL_NONE_H_
@@ -61,18 +52,8 @@
 //--------------------------------------------------------------------+
 // TICK API
 //--------------------------------------------------------------------+
-extern volatile uint32_t osal_tick_current;
-static inline void osal_tick_tock(void) ATTR_ALWAYS_INLINE;
-static inline void osal_tick_tock(void)
-{
-  osal_tick_current++;
-}
-
-static inline volatile uint32_t osal_tick_get(void) ATTR_ALWAYS_INLINE;
-static inline volatile uint32_t osal_tick_get(void)
-{
-  return osal_tick_current;
-}
+uint32_t tusb_tick_get(void);
+#define osal_tick_get tusb_tick_get
 
 //--------------------------------------------------------------------+
 // TASK API
@@ -88,11 +69,11 @@ static inline volatile uint32_t osal_tick_get(void)
 //   OSAL_TASK_LOOP_ENG
 // }
 //--------------------------------------------------------------------+
-#define OSAL_TASK_DEF(variable, name, code, stack_depth, prio)
+#define OSAL_TASK_DEF(code, stack_depth, prio)
+#define OSAL_TASK_REF
 #define osal_task_create(x) TUSB_ERROR_NONE
 
-#define OSAL_TASK_FUNCTION(task_func) \
-  tusb_error_t task_func
+#define OSAL_TASK_FUNCTION(task_func, p_para)   tusb_error_t task_func(void * p_para)
 
 #define TASK_RESTART \
   state = 0
@@ -100,13 +81,14 @@ static inline volatile uint32_t osal_tick_get(void)
 #define OSAL_TASK_LOOP_BEGIN \
   ATTR_UNUSED static uint32_t timeout = 0;\
   static uint16_t state = 0;\
-  switch(state) {\
-    case 0:\
+  (void) timeout; /* timemout can possible unsued */ \
+  switch(state) { \
+    case 0: { \
 
 #define OSAL_TASK_LOOP_END \
   default:\
     TASK_RESTART;\
-  }\
+  }}\
   return TUSB_ERROR_NONE;
 
 
@@ -121,7 +103,6 @@ static inline volatile uint32_t osal_tick_get(void)
 //--------------------------------------------------------------------+
 // SUBTASK (a sub function that uses OS blocking services & called by a task
 //--------------------------------------------------------------------+
-//------------- Sub Task -------------//
 #define OSAL_SUBTASK_INVOKED_AND_WAIT(subtask, status) \
     do {\
       state = __LINE__; case __LINE__:\
@@ -167,11 +148,8 @@ static inline volatile uint32_t osal_tick_get(void)
 typedef volatile uint8_t osal_semaphore_t;
 typedef osal_semaphore_t * osal_semaphore_handle_t;
 
-#define OSAL_SEM_DEF(name)\
-  osal_semaphore_t name
-
-#define OSAL_SEM_REF(name)\
-  &name
+#define OSAL_SEM_DEF(name) osal_semaphore_t name
+#define OSAL_SEM_REF(name) &name
 
 static inline osal_semaphore_handle_t osal_semaphore_create(osal_semaphore_t * p_sem) ATTR_WARN_UNUSED_RESULT ATTR_ALWAYS_INLINE;
 static inline osal_semaphore_handle_t osal_semaphore_create(osal_semaphore_t * p_sem)
@@ -184,7 +162,6 @@ static inline  tusb_error_t osal_semaphore_post(osal_semaphore_handle_t sem_hdl)
 static inline  tusb_error_t osal_semaphore_post(osal_semaphore_handle_t sem_hdl)
 {
   (*sem_hdl)++;
-
   return TUSB_ERROR_NONE;
 }
 
@@ -199,7 +176,7 @@ static inline void osal_semaphore_reset(osal_semaphore_handle_t sem_hdl)
     timeout = osal_tick_get();\
     state = __LINE__; case __LINE__:\
     if( *(sem_hdl) == 0 ) {\
-      if ( (msec != OSAL_TIMEOUT_WAIT_FOREVER) && (timeout + osal_tick_from_msec(msec) < osal_tick_get()) ) /* time out */ \
+      if ( ( ((uint32_t) (msec)) != OSAL_TIMEOUT_WAIT_FOREVER) && (timeout + osal_tick_from_msec(msec) <= osal_tick_get()) ) /* time out */ \
         *(p_error) = TUSB_ERROR_OSAL_TIMEOUT;\
       else\
         return TUSB_ERROR_OSAL_WAITING;\
@@ -215,11 +192,8 @@ static inline void osal_semaphore_reset(osal_semaphore_handle_t sem_hdl)
 typedef osal_semaphore_t        osal_mutex_t;
 typedef osal_semaphore_handle_t osal_mutex_handle_t;
 
-#define OSAL_MUTEX_DEF(name)\
-  osal_mutex_t name
-
-#define OSAL_MUTEX_REF(name)\
-  &name
+#define OSAL_MUTEX_DEF(name) osal_mutex_t name
+#define OSAL_MUTEX_REF(name) &name
 
 static inline osal_mutex_handle_t osal_mutex_create(osal_mutex_t * p_mutex) ATTR_WARN_UNUSED_RESULT ATTR_ALWAYS_INLINE;
 static inline osal_mutex_handle_t osal_mutex_create(osal_mutex_t * p_mutex)
@@ -248,24 +222,27 @@ static inline void osal_mutex_reset(osal_mutex_handle_t mutex_hdl)
 // QUEUE API
 //--------------------------------------------------------------------+
 typedef struct{
-           void *  const buffer    ; ///< buffer pointer
-           uint8_t const depth     ; ///< max items
-           uint8_t const item_size ; ///< size of each item
-  volatile uint8_t count           ; ///< number of items in queue
-  volatile uint8_t wr_idx          ; ///< write pointer
-  volatile uint8_t rd_idx          ; ///< read pointer
+           uint8_t* const buffer    ; ///< buffer pointer
+           uint8_t  const depth     ; ///< max items
+           uint8_t  const item_size ; ///< size of each item
+  volatile uint8_t count            ; ///< number of items in queue
+  volatile uint8_t wr_idx           ; ///< write pointer
+  volatile uint8_t rd_idx           ; ///< read pointer
 } osal_queue_t;
 
 typedef osal_queue_t * osal_queue_handle_t;
 
 // use to declare a queue, within the scope of tinyusb, should only use primitive type only
 #define OSAL_QUEUE_DEF(name, queue_depth, type)\
+  STATIC_ASSERT(queue_depth < 256, "OSAL Queue only support up to 255 depth");\
   type name##_buffer[queue_depth];\
   osal_queue_t name = {\
-      .buffer    = name##_buffer,\
+      .buffer    = (uint8_t*) name##_buffer,\
       .depth     = queue_depth,\
       .item_size = sizeof(type)\
   }
+
+#define OSAL_QUEUE_REF(name)  (&name)
 
 static inline osal_queue_handle_t osal_queue_create(osal_queue_t * const p_queue) ATTR_WARN_UNUSED_RESULT ATTR_ALWAYS_INLINE;
 static inline osal_queue_handle_t osal_queue_create(osal_queue_t * const p_queue)
@@ -273,33 +250,7 @@ static inline osal_queue_handle_t osal_queue_create(osal_queue_t * const p_queue
   p_queue->count = p_queue->wr_idx = p_queue->rd_idx = 0;
   return (osal_queue_handle_t) p_queue;
 }
-
-// TODO move to osal_none.c
-// when queue is full, it will overwrite the oldest data in the queue
-static inline tusb_error_t osal_queue_send(osal_queue_handle_t const queue_hdl, void const * data) ATTR_ALWAYS_INLINE;
-static inline tusb_error_t osal_queue_send(osal_queue_handle_t const queue_hdl, void const * data)
-{
-  //TODO mutex lock hal_interrupt_disable
-
-  memcpy( queue_hdl->buffer + (queue_hdl->wr_idx * queue_hdl->item_size),
-          data,
-          queue_hdl->item_size);
-
-  queue_hdl->wr_idx = (queue_hdl->wr_idx + 1) % queue_hdl->depth;
-
-  if (queue_hdl->depth == queue_hdl->count) // queue is full, 1st rd is overwritten
-  {
-    queue_hdl->rd_idx = queue_hdl->wr_idx; // keep full state
-  }else
-  {
-    queue_hdl->count++;
-  }
-
-  //TODO mutex unlock hal_interrupt_enable
-
-  return TUSB_ERROR_NONE;
-}
-
+tusb_error_t osal_queue_send(osal_queue_handle_t const queue_hdl, void const * data);
 static inline void osal_queue_flush(osal_queue_handle_t const queue_hdl) ATTR_ALWAYS_INLINE;
 static inline void osal_queue_flush(osal_queue_handle_t const queue_hdl)
 {
@@ -310,8 +261,8 @@ static inline void osal_queue_flush(osal_queue_handle_t const queue_hdl)
   do {\
     timeout = osal_tick_get();\
     state = __LINE__; case __LINE__:\
-    if( queue_hdl-> count == 0 ) {\
-      if ( (msec != OSAL_TIMEOUT_WAIT_FOREVER) && ( timeout + osal_tick_from_msec(msec) < osal_tick_get() )) /* time out */ \
+    if( queue_hdl->count == 0 ) {\
+      if ( (msec != OSAL_TIMEOUT_WAIT_FOREVER) && ( timeout + osal_tick_from_msec(msec) <= osal_tick_get() )) /* time out */ \
         *(p_error) = TUSB_ERROR_OSAL_TIMEOUT;\
       else\
         return TUSB_ERROR_OSAL_WAITING;\
@@ -324,9 +275,6 @@ static inline void osal_queue_flush(osal_queue_handle_t const queue_hdl)
       *(p_error) = TUSB_ERROR_NONE;\
     }\
   }while(0)
-
-
-// queue_send, queue_receive
 
 #ifdef __cplusplus
  }

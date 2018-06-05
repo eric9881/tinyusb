@@ -36,19 +36,6 @@
 */
 /**************************************************************************/
 
-/** \file
- *  \brief TBD
- *
- *  \note TBD
- */
-
-/** \ingroup TBD
- *  \defgroup TBD
- *  \brief TBD
- *
- *  @{
- */
-
 #ifndef _TUSB_MCU_CAPACITY_H_
 #define _TUSB_MCU_CAPACITY_H_
 
@@ -59,27 +46,29 @@
 // CAP is abbreviation for Capacity
 
 //--------------------------------------------------------------------+
+// ARCHTECTURE
+//--------------------------------------------------------------------+
+
+
+
+//--------------------------------------------------------------------+
 // Controller
 //--------------------------------------------------------------------+
-#if MCU == MCU_LPC43XX || MCU == MCU_LPC18XX
+#if TUSB_CFG_MCU == MCU_LPC43XX || TUSB_CFG_MCU == MCU_LPC18XX
   #define CAP_CONTROLLER_NUMBER 2
 #else
   #define CAP_CONTROLLER_NUMBER 1
 #endif
 
 #define CAP_MODE_DEVICE
-#if MCU == MCU_LPC43XX || MCU == MCU_LPC18XX || MCU == MCU_LPC175X_6X
+#if TUSB_CFG_MCU == MCU_LPC43XX || TUSB_CFG_MCU == MCU_LPC18XX || TUSB_CFG_MCU == MCU_LPC175X_6X
   #define CAP_MODE_HOST
-#endif
-
-#if MCU == MCU_LPC43XX || MCU == MCU_LPC18XX || MCU == MCU_LPC11UXX || MCU == MCU_LPC13UXX
-  #define CAP_DEVICE_ROMDRIVER
 #endif
 
 //--------------------------------------------------------------------+
 // Validation
 //--------------------------------------------------------------------+
-#if (CAP_CONTROLLER_NUMBER == 1) && ( defined TUSB_CFG_CONTROLLER1_MODE)
+#if (CAP_CONTROLLER_NUMBER == 1) && ( defined TUSB_CFG_CONTROLLER_1_MODE)
  #error current MCU does not have the required number of controllers
 #endif
 
@@ -88,5 +77,3 @@
 #endif
 
 #endif /* _TUSB_MCU_CAPACITY_H_ */
-
-/** @} */

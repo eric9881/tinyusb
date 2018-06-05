@@ -36,46 +36,60 @@
 */
 /**************************************************************************/
 
-#include "tusb_option.h"
-
-#if MCU == MCU_LPC175X_6X
-
-//--------------------------------------------------------------------+
-// INCLUDE
-//--------------------------------------------------------------------+
 #include "common/common.h"
 #include "hal.h"
 
-enum {
-  PCONP_PCUSB = 31
-};
+#if TUSB_CFG_MCU == MCU_LPC175X_6X
+
+#ifdef __CC_ARM
+#pragma diag_suppress 66 // Suppress Keil warnings #66-D: enumeration value is out of "int" range
+#endif
 
 //--------------------------------------------------------------------+
 // IMPLEMENTATION
 //--------------------------------------------------------------------+
 tusb_error_t hal_init(void)
 {
+  enum {
+    USBCLK_DEVCIE = 0x12,     // AHB + Device
+    USBCLK_HOST   = 0x19,     // AHB + Host + OTG (!)
+
+    PCONP_PCUSB   = BIT_(31)
+  };
+
+  LPC_SC->PCONP |= PCONP_PCUSB; // enable USB Peripherals
+
   //------------- user manual 11.13 usb device controller initialization -------------//
-	// TODO remove magic number
-  /* Enable AHB clock to the USB block and USB RAM. */
-//  LPC_SYSCON->SYSAHBCLKCTRL |= ((0x1<<14) | (0x1<<27));
+  PINSEL_ConfigPin( &(PINSEL_CFG_Type) { .Portnum = 0, .Pinnum = 29, .Funcnum = 1} ); // P0.29 as D+
+  PINSEL_ConfigPin( &(PINSEL_CFG_Type) { .Portnum = 0, .Pinnum = 30, .Funcnum = 1} ); // P0.30 as D-
 
-  LPC_PINCON->PINSEL1 &= ~((3<<26)|(3<<28));  /* P0.29 D+, P0.30 D- */
-  LPC_PINCON->PINSEL1 |=  ((1<<26)|(1<<28));  /* PINSEL1 26.27, 28.29  = 01 */
+#if MODE_HOST_SUPPORTED
+  PINSEL_ConfigPin( &(PINSEL_CFG_Type) { .Portnum = 1, .Pinnum = 22, .Funcnum = 2} ); // P1.22 as USB_PWRD
+  PINSEL_ConfigPin( &(PINSEL_CFG_Type) { .Portnum = 1, .Pinnum = 19, .Funcnum = 2} ); // P1.19 as USB_PPWR
 
-//  LPC_PINCON->PINSEL3 &= ~(3<<6); TODO HOST
-//  LPC_PINCON->PINSEL3 |= (2<<6);
+  LPC_USB->USBClkCtrl = USBCLK_HOST;
+  while ((LPC_USB->USBClkSt & USBCLK_HOST) != USBCLK_HOST);
+  LPC_USB->OTGStCtrl = 0x3;
+#endif
 
-  LPC_SC->PCONP |= BIT_(PCONP_PCUSB);                	/* USB PCLK -> enable USB Per.*/
+#if MODE_DEVICE_SUPPORTED
+  LPC_PINCON->PINSEL4 = bit_set_range(LPC_PINCON->PINSEL4, 18, 19, BIN8(01)); // P2_9 as USB Connect
 
-  // DEVICE mode
-  LPC_USB->USBClkCtrl = 0x12;                 /* Dev, PortSel, AHB clock enable */
-  while ((LPC_USB->USBClkSt & 0x12) != 0x12);
+  // P1_30 as VBUS, ignore if it is already in VBUS mode
+  if ( !(!BIT_TEST_(LPC_PINCON->PINSEL3, 28) && BIT_TEST_(LPC_PINCON->PINSEL3, 29)) )
+  {
+    // some board like lpcxpresso1769 does not connect VBUS signal to pin P1_30, this allow those board to overwrite
+    // by always pulling P1_30 to high
+    PINSEL_ConfigPin( &(PINSEL_CFG_Type) {
+      .Portnum = 1, .Pinnum = 30,
+      .Funcnum = 2, .Pinmode = PINSEL_PINMODE_PULLDOWN} );
+  }
 
-  /* Pull-down is needed, or internally, VBUS will be floating. This is to
-  address the wrong status in VBUSDebouncing bit in CmdStatus register.  */
+  LPC_USB->USBClkCtrl = USBCLK_DEVCIE;
+  while ((LPC_USB->USBClkSt & USBCLK_DEVCIE) != USBCLK_DEVCIE);
+#endif
 
-return TUSB_ERROR_NONE;
+  return TUSB_ERROR_NONE;
 }
 
 void USB_IRQHandler(void)

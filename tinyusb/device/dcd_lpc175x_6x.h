@@ -36,12 +36,9 @@
 */
 /**************************************************************************/
 
-/** \ingroup TBD
- *  \defgroup TBD
- *  \brief TBD
- *
- *  @{
- */
+/** \ingroup group_dcd
+ *  \defgroup group_dcd_lpc175x_6x LPC175x_6x
+ *  @{ */
 
 #ifndef _TUSB_DCD_LPC175X_6X_H_
 #define _TUSB_DCD_LPC175X_6X_H_
@@ -53,7 +50,7 @@
 #endif
 
 
-typedef struct
+typedef struct ATTR_ALIGNED(4)
 {
 	//------------- Word 0 -------------//
 	uint32_t next;
@@ -61,13 +58,13 @@ typedef struct
 	//------------- Word 1 -------------//
 	uint16_t mode            : 2; // either 00 normal or 01 ATLE(auto length extraction)
 	uint16_t is_next_valid   : 1;
-	uint16_t                 : 1;
+	uint16_t int_on_complete : 1; ///< make use of reserved bit
 	uint16_t is_isochronous  : 1; // is an iso endpoint
 	uint16_t max_packet_size : 11;
 	volatile uint16_t buffer_length;
 
 	//------------- Word 2 -------------//
-	volatile uint32_t buffer_start_addr;
+	volatile uint32_t buffer_addr;
 
 	//------------- Word 3 -------------//
 	volatile uint16_t is_retired                   : 1; // initialized to zero
@@ -81,14 +78,10 @@ typedef struct
 
 	//------------- Word 4 -------------//
 //	uint32_t iso_packet_size_addr;		// iso only, can be omitted for non-iso
-} ATTR_ALIGNED(4) dcd_dma_descriptor_t;
+}dcd_dma_descriptor_t;
 
-#define DCD_MAX_DD 32 // TODO scale with configure
+STATIC_ASSERT( sizeof(dcd_dma_descriptor_t) == 16, "size is not correct"); // TODO not support ISO for now
 
-//typedef struct {
-//  dcd_dma_descriptor_t dd[DCD_MAX_DD];
-//
-//}dcd_data_t;
 
 //--------------------------------------------------------------------+
 // Register Interface
@@ -114,12 +107,7 @@ enum {
   DEV_INT_RX_ENDPOINT_PACKET_MASK = BIT_(6),
   DEV_INT_TX_ENDPOINT_PACKET_MASK = BIT_(7),
   DEV_INT_ENDPOINT_REALIZED_MASK  = BIT_(8),
-  DEV_INT_ERROR_MASK              = BIT_(9),
-
-  DEV_INT_ALL_MASK = DEV_INT_FRAME_MASK | DEV_INT_ENDPOINT_FAST_MASK | DEV_INT_ENDPOINT_SLOW_MASK |
-    DEV_INT_DEVICE_STATUS_MASK | DEV_INT_COMMAND_CODE_EMPTY_MASK | DEV_INT_COMMAND_DATA_FULL_MASK |
-    DEV_INT_RX_ENDPOINT_PACKET_MASK | DEV_INT_TX_ENDPOINT_PACKET_MASK | DEV_INT_ENDPOINT_REALIZED_MASK |
-    DEV_INT_ERROR_MASK
+  DEV_INT_ERROR_MASK              = BIT_(9)
 };
 
 //------------- DMA Interrupt USBDMAInt-------------//
@@ -131,24 +119,24 @@ enum {
 
 //------------- USBCtrl -------------//
 enum {
-  SLAVE_CONTROL_READ_ENABLE_MASK  = BIT_(0),
-  SLAVE_CONTROL_WRITE_ENABLE_MASK = BIT_(1),
-  SLAVE_CONTROL_READ_ENABLE_POS   = 2
+  USBCTRL_READ_ENABLE_MASK  = BIT_(0),
+  USBCTRL_WRITE_ENABLE_MASK = BIT_(1),
 };
 
 //------------- USBRxPLen -------------//
 enum {
-  SLAVE_RXPLEN_PACKET_LENGTH_MASK = (BIT_(10)-1),
-  SLAVE_RXPLEN_DATA_VALID_MASK = BIT_(10),
-  SLAVE_RXPLEN_PACKET_READY_MASK = BIT_(11),
+  USBRXPLEN_PACKET_LENGTH_MASK = (BIT_(10)-1),
+  USBRXPLEN_DATA_VALID_MASK    = BIT_(10),
+  USBRXPLEN_PACKET_READY_MASK  = BIT_(11),
 };
 
 //------------- SIE Command Code -------------//
-enum {
+typedef enum
+{
   SIE_CMDPHASE_WRITE   = 1,
   SIE_CMDPHASE_READ    = 2,
   SIE_CMDPHASE_COMMAND = 5
-};
+} sie_cmdphase_t;
 
 enum {
   // device commands
@@ -171,23 +159,31 @@ enum {
 
 //------------- SIE Device Status (get/set from SIE_CMDCODE_DEVICE_STATUS) -------------//
 enum {
-  SIE_DEV_STATUS_CONNECT_MASK        = BIT_(0),
+  SIE_DEV_STATUS_CONNECT_STATUS_MASK = BIT_(0),
   SIE_DEV_STATUS_CONNECT_CHANGE_MASK = BIT_(1),
   SIE_DEV_STATUS_SUSPEND_MASK        = BIT_(2),
   SIE_DEV_STATUS_SUSPEND_CHANGE_MASK = BIT_(3),
   SIE_DEV_STATUS_RESET_MASK          = BIT_(4)
 };
 
-//------------- SIE Endpoint Status -------------//
+//------------- SIE Select Endpoint Command -------------//
 enum {
-  SIE_ENDPOINT_STATUS_FULL_EMPTY_MASK         = BIT_(0), // 0: empty, 1 full. IN endpoint checks empty, OUT endpoint check full
-  SIE_ENDPOINT_STATUS_STALL_MASK              = BIT_(1),
-  SIE_ENDPOINT_STATUS_SETUP_RECEIVED_MASK     = BIT_(2), // clear by SIE_CMDCODE_ENDPOINT_SELECT_CLEAR_INTERRUPT
-  SIE_ENDPOINT_STATUS_PACKET_OVERWRITTEN_MASK = BIT_(3), // previous packet is overwritten by a SETUP packet
-  SIE_ENDPOINT_STATUS_NAK_MASK                = BIT_(4), // last packet response is NAK (auto clear by an ACK)
-  SIE_ENDPOINT_STATUS_BUFFER1_FULL_MASK       = BIT_(5),
-  SIE_ENDPOINT_STATUS_BUFFER2_FULL_MASK       = BIT_(6)
+  SIE_SELECT_ENDPOINT_FULL_EMPTY_MASK         = BIT_(0), // 0: empty, 1 full. IN endpoint checks empty, OUT endpoint check full
+  SIE_SELECT_ENDPOINT_STALL_MASK              = BIT_(1),
+  SIE_SELECT_ENDPOINT_SETUP_RECEIVED_MASK     = BIT_(2), // clear by SIE_CMDCODE_ENDPOINT_SELECT_CLEAR_INTERRUPT
+  SIE_SELECT_ENDPOINT_PACKET_OVERWRITTEN_MASK = BIT_(3), // previous packet is overwritten by a SETUP packet
+  SIE_SELECT_ENDPOINT_NAK_MASK                = BIT_(4), // last packet response is NAK (auto clear by an ACK)
+  SIE_SELECT_ENDPOINT_BUFFER1_FULL_MASK       = BIT_(5),
+  SIE_SELECT_ENDPOINT_BUFFER2_FULL_MASK       = BIT_(6)
 };
+
+typedef enum
+{
+  SIE_SET_ENDPOINT_STALLED_MASK           = BIT_(0),
+  SIE_SET_ENDPOINT_DISABLED_MASK          = BIT_(5),
+  SIE_SET_ENDPOINT_RATE_FEEDBACK_MASK     = BIT_(6),
+  SIE_SET_ENDPOINT_CONDITION_STALLED_MASK = BIT_(7),
+}sie_endpoint_set_status_mask_t;
 
 //------------- DMA Descriptor Status -------------//
 enum {
@@ -198,6 +194,42 @@ enum {
   DD_STATUS_DATA_OVERRUN,
   DD_STATUS_SYSTEM_ERROR
 };
+
+//--------------------------------------------------------------------+
+// SIE Command
+//--------------------------------------------------------------------+
+static inline void sie_cmd_code (sie_cmdphase_t phase, uint8_t code_data) ATTR_ALWAYS_INLINE;
+static inline void sie_cmd_code (sie_cmdphase_t phase, uint8_t code_data)
+{
+  LPC_USB->USBDevIntClr = (DEV_INT_COMMAND_CODE_EMPTY_MASK | DEV_INT_COMMAND_DATA_FULL_MASK);
+  LPC_USB->USBCmdCode   = (phase << 8) | (code_data << 16);
+
+  uint32_t const wait_flag = (phase == SIE_CMDPHASE_READ) ? DEV_INT_COMMAND_DATA_FULL_MASK : DEV_INT_COMMAND_CODE_EMPTY_MASK;
+#ifndef _TEST_
+  while ((LPC_USB->USBDevIntSt & wait_flag) == 0); // TODO blocking forever potential
+#endif
+  LPC_USB->USBDevIntClr = wait_flag;
+}
+
+static inline void sie_write (uint8_t cmd_code, uint8_t data_len, uint8_t data) ATTR_ALWAYS_INLINE;
+static inline void sie_write (uint8_t cmd_code, uint8_t data_len, uint8_t data)
+{
+  sie_cmd_code(SIE_CMDPHASE_COMMAND, cmd_code);
+
+  if (data_len)
+  {
+    sie_cmd_code(SIE_CMDPHASE_WRITE, data);
+  }
+}
+
+static inline uint32_t sie_read (uint8_t cmd_code, uint8_t data_len) ATTR_ALWAYS_INLINE;
+static inline uint32_t sie_read (uint8_t cmd_code, uint8_t data_len)
+{
+  // TODO multiple read
+  sie_cmd_code(SIE_CMDPHASE_COMMAND , cmd_code);
+  sie_cmd_code(SIE_CMDPHASE_READ    , cmd_code);
+  return LPC_USB->USBCmdData;
+}
 
 #ifdef __cplusplus
  }

@@ -21,7 +21,7 @@
  * Version 1.02
  *    Control functions for short timeouts in microsecond resolution:
  *    Added: osKernelSysTick, osKernelSysTickFrequency, osKernelSysTickMicroSec
- *    Removed: osSignalGet 
+ *    Removed: osSignalGet
  *----------------------------------------------------------------------------
  *
  * Copyright (c) 2013 ARM LIMITED
@@ -141,13 +141,13 @@ used throughout the whole project.
 
 
 /// \note MUST REMAIN UNCHANGED: \b osFeature_xxx shall be consistent in every CMSIS-RTOS.
-#define osFeature_MainThread   1       ///< main thread      1=main can be thread, 0=not available
+#define osFeature_MainThread   0       ///< main thread      1=main can be thread, 0=not available
 #define osFeature_Pool         1       ///< Memory Pools:    1=available, 0=not available
 #define osFeature_MailQ        1       ///< Mail Queues:     1=available, 0=not available
 #define osFeature_MessageQ     1       ///< Message Queues:  1=available, 0=not available
 #define osFeature_Signals      16      ///< maximum number of Signal Flags available per thread
 #define osFeature_Semaphore    65535   ///< maximum count for \ref osSemaphoreCreate function
-#define osFeature_Wait         1       ///< osWait function: 1=available, 0=not available
+#define osFeature_Wait         0       ///< osWait function: 1=available, 0=not available
 #define osFeature_SysTick      1       ///< osKernelSysTick functions: 1=available, 0=not available
 
 #if defined (__CC_ARM)
@@ -344,7 +344,7 @@ extern uint16_t const os_tickus_f;
 
 /// Get the RTOS kernel system timer counter.
 /// \note MUST REMAIN UNCHANGED: \b osKernelSysTick shall be consistent in every CMSIS-RTOS.
-/// \return RTOS kernel system timer as 32-bit value 
+/// \return RTOS kernel system timer as 32-bit value
 uint32_t osKernelSysTick (void);
 
 /// The RTOS kernel system timer frequency in Hz.

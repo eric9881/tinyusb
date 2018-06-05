@@ -36,19 +36,6 @@
 */
 /**************************************************************************/
 
-/** \file
- *  \brief TBD
- *
- *  \note TBD
- */
-
-/** \ingroup TBD
- *  \defgroup TBD
- *  \brief TBD
- *
- *  @{
- */
-
 #ifndef _TUSB_OSAL_H_
 #define _TUSB_OSAL_H_
 
@@ -56,25 +43,61 @@
  extern "C" {
 #endif
 
-#include "tusb_option.h"
+/** \addtogroup group_osal
+ *  @{ */
 
-#define TUSB_OS_NONE     1
-#define TUSB_OS_FREERTOS 2
-#define TUSB_OS_CMSIS    3
-#define TUSB_OS_UCOS2    4
-#define TUSB_OS_UCOS3    5
+/** \defgroup group_supported_os Supported RTOS
+ * \brief \ref TUSB_CFG_OS must be defined to one of these
+ *  @{ */
+#define TUSB_OS_NONE       1 ///< No RTOS is used
+#define TUSB_OS_FREERTOS   2 ///< FreeRTOS is used
+#define TUSB_OS_CMSIS_RTX  3 ///< CMSIS RTX is used
+#define TUSB_OS_UCOS3      4 ///< MicroC OS III is used (not supported yet)
+/** @} */
+
+#include "tusb_option.h"
 
 #ifndef _TEST_
 
 #if TUSB_CFG_OS == TUSB_OS_NONE
   #include "osal_none.h"
-#elif TUSB_CFG_OS == TUSB_OS_FREERTOS
-  #include "osal_freeRTOS.h"
+
 #else
-  #error TUSB_CFG_OS is not defined or OS is not supported yet
+   #if TUSB_CFG_OS == TUSB_OS_FREERTOS
+    #include "osal_freeRTOS.h"
+  #elif TUSB_CFG_OS == TUSB_OS_CMSIS_RTX
+    #include "osal_cmsis_rtx.h"
+  #else
+    #error TUSB_CFG_OS is not defined or OS is not supported yet
+  #endif
+
+  #define OSAL_TASK_LOOP_BEGIN while(1) {
+  #define OSAL_TASK_LOOP_END   }
+
+  //------------- Sub Task -------------//
+  #define OSAL_SUBTASK_BEGIN
+  #define OSAL_SUBTASK_END      return TUSB_ERROR_NONE;
+
+  #define SUBTASK_EXIT(error)   return error;
+  #define OSAL_SUBTASK_INVOKED_AND_WAIT(subtask, status) status = subtask
+
+  //------------- Sub Task Assert -------------//
+  #define SUBTASK_ASSERT_STATUS(sts) ASSERT_STATUS(sts)
+  #define SUBTASK_ASSERT(condition)  ASSERT(condition, TUSB_ERROR_OSAL_TASK_FAILED)
+
+  #define _SUBTASK_ASSERT_ERROR_HANDLER(error, func_call) func_call; return error
+
+  #define SUBTASK_ASSERT_STATUS_WITH_HANDLER(sts, func_call) \
+      ASSERT_DEFINE_WITH_HANDLER(_SUBTASK_ASSERT_ERROR_HANDLER, func_call, tusb_error_t status = (tusb_error_t)(sts),\
+                                 TUSB_ERROR_NONE == status, status, "%s", TUSB_ErrorStr[status])
+
+  #define SUBTASK_ASSERT_WITH_HANDLER(condition, func_call) \
+      ASSERT_DEFINE_WITH_HANDLER(_SUBTASK_ASSERT_ERROR_HANDLER, func_call, ,\
+                                 condition, TUSB_ERROR_OSAL_TASK_FAILED, "%s", "evaluated to false")
 #endif
 
-#else // OSAL API for cmock
+//------------- OSAL API for cmock -------------//
+#else
 
 #include "osal_common.h"
 
@@ -87,11 +110,9 @@ uint32_t osal_tick_get(void);
 typedef uint32_t osal_task_t;
 tusb_error_t osal_task_create(osal_task_t *task);
 
-#define OSAL_TASK_DEF(variable, name, code, stack_depth, prio) \
-    osal_task_t variable
-
-#define OSAL_TASK_FUNCTION(task_name) \
-    void task_name
+#define OSAL_TASK_DEF(code, stack_depth, prio) osal_task_t variable
+#define OSAL_TASK_REF(name) (&name)
+#define OSAL_TASK_FUNCTION(task_func, p_para)   void task_func(void * p_para)
 
 void osal_task_delay(uint32_t msec);
 
@@ -101,16 +122,13 @@ void osal_task_delay(uint32_t msec);
 #define SUBTASK_EXIT(error)   return error;
 
 //------------- Sub Task -------------//
-#define OSAL_SUBTASK_INVOKED_AND_WAIT(subtask, status) \
-  status = subtask
+#define OSAL_SUBTASK_INVOKED_AND_WAIT(subtask, status) status = subtask
 
 #define OSAL_SUBTASK_BEGIN
-#define OSAL_SUBTASK_END \
-  return TUSB_ERROR_NONE;
+#define OSAL_SUBTASK_END return TUSB_ERROR_NONE;
 
 //------------- Sub Task Assert -------------//
-#define _SUBTASK_ASSERT_ERROR_HANDLER(error, func_call)\
-    func_call; return error
+#define _SUBTASK_ASSERT_ERROR_HANDLER(error, func_call) func_call; return error
 
 #define SUBTASK_ASSERT_STATUS(sts) ASSERT_STATUS(sts)
 
@@ -124,18 +142,14 @@ void osal_task_delay(uint32_t msec);
     ASSERT_DEFINE_WITH_HANDLER(_SUBTASK_ASSERT_ERROR_HANDLER, func_call, ,\
                                condition, TUSB_ERROR_OSAL_TASK_FAILED, "%s", "evaluated to false")
 
-
 //--------------------------------------------------------------------+
 // Semaphore API
 //--------------------------------------------------------------------+
 typedef volatile uint8_t osal_semaphore_t;
 typedef osal_semaphore_t * osal_semaphore_handle_t;
 
-#define OSAL_SEM_DEF(name)\
-  osal_semaphore_t name
-
-#define OSAL_SEM_REF(name)\
-  &name
+#define OSAL_SEM_DEF(name) osal_semaphore_t name
+#define OSAL_SEM_REF(name) &name
 
 osal_semaphore_handle_t osal_semaphore_create(osal_semaphore_t * p_sem);
 void osal_semaphore_wait(osal_semaphore_handle_t sem_hdl, uint32_t msec, tusb_error_t *p_error);
@@ -145,11 +159,8 @@ void osal_semaphore_reset(osal_semaphore_handle_t sem_hdl);
 //--------------------------------------------------------------------+
 // MUTEX API (priority inheritance)
 //--------------------------------------------------------------------+
-#define OSAL_MUTEX_DEF(name)\
-  osal_mutex_t name
-
-#define OSAL_MUTEX_REF(name)\
-  &name
+#define OSAL_MUTEX_DEF(name) osal_mutex_t name
+#define OSAL_MUTEX_REF(name) &name
 
 typedef osal_semaphore_t        osal_mutex_t;
 typedef osal_semaphore_handle_t osal_mutex_handle_t;
@@ -171,8 +182,8 @@ typedef struct{
 
 typedef osal_queue_t * osal_queue_handle_t;
 
-#define OSAL_QUEUE_DEF(name, queue_depth, type) \
-  osal_queue_t name
+#define OSAL_QUEUE_DEF(name, queue_depth, type) osal_queue_t name
+#define OSAL_QUEUE_REF(name)  (&name)
 
 osal_queue_handle_t  osal_queue_create  (osal_queue_t *p_queue);
 void                 osal_queue_receive (osal_queue_handle_t const queue_hdl, void *p_data, uint32_t msec, tusb_error_t *p_error);
@@ -189,6 +200,6 @@ uint32_t osal_tick_get(void);
  }
 #endif
 
-#endif /* _TUSB_OSAL_H_ */
-
 /** @} */
+
+#endif /* _TUSB_OSAL_H_ */

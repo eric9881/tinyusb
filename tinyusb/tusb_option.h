@@ -36,23 +36,8 @@
 */
 /**************************************************************************/
 
-/** \file
- *  \brief Configure File
- *
- *  \note TBD
- */
-
-/** 
- *  \defgroup Group_TinyUSB_Configure Configuration tusb_option.h
- *  @{
- */
-
 #ifndef _TUSB_TUSB_OPTION_H_
 #define _TUSB_TUSB_OPTION_H_
-
-#ifdef __cplusplus
- extern "C" {
-#endif
 
 #define TUSB_VERSION_YEAR   00
 #define TUSB_VERSION_MONTH  00
@@ -60,77 +45,91 @@
 #define TUSB_VERSION_NAME   "alpha"
 #define TUSB_VERSION        XSTRING_(TUSB_VERSION_YEAR) "." XSTRING_(TUSB_VERSION_MONTH)
 
-#define MCU_LPC13UXX    1
-#define MCU_LPC11UXX    2
-#define MCU_LPC43XX     3
-#define MCU_LPC18XX     4
-#define MCU_LPC175X_6X  5
-#define MCU_LPC177X_8X  6
+/** \defgroup group_mcu Supported MCU
+ * \ref TUSB_CFG_MCU must be defined to one of these
+ *  @{ */
+#define MCU_LPC11UXX       1 ///< NXP LPC11Uxx family
+#define MCU_LPC13XX        2 ///< NXP LPC13xx (not supported yet)
+#define MCU_LPC13UXX       3 ///< NXP LPC13xx 12 bit ADC family
+#define MCU_LPC175X_6X     4 ///< NXP LPC175x, LPC176x family
+#define MCU_LPC177X_8X     5 ///< NXP LPC177x, LPC178x family (not supported yet)
+#define MCU_LPC18XX        6 ///< NXP LPC18xx family (not supported yet)
+#define MCU_LPC43XX        7 ///< NXP LPC43xx family
+/** @} */
 
-/// define this symbol will make tinyusb look for external configure file
 #include "mcu_capacity.h"
 
-#ifdef TUSB_CFG_CONFIG_FILE
-  #include TUSB_CFG_CONFIG_FILE
-#else
-  #include "tusb_config.h"
+#ifndef TUSB_CFG_CONFIG_FILE
+  #define TUSB_CFG_CONFIG_FILE "tusb_config.h"
 #endif
+
+#include TUSB_CFG_CONFIG_FILE
+
+/** \addtogroup group_configuration
+ *  @{ */
 
 //--------------------------------------------------------------------+
 // CONTROLLER
 //--------------------------------------------------------------------+
-#define TUSB_MODE_HOST    0x02
-#define TUSB_MODE_DEVICE  0x01
-#define TUSB_MODE_NONE    0x00
+/** \defgroup group_mode Controller Mode Selection
+ * \brief TUSB_CFG_CONTROLLER_N_MODE must be defined with these
+ *  @{ */
+#define TUSB_MODE_HOST    0x02 ///< Host Mode
+#define TUSB_MODE_DEVICE  0x01 ///< Device Mode
+#define TUSB_MODE_NONE    0x00 ///< Disabled
+/** @} */
+
+#ifndef TUSB_CFG_CONTROLLER_0_MODE
+  #define TUSB_CFG_CONTROLLER_0_MODE TUSB_MODE_NONE
+#endif
+
+#ifndef TUSB_CFG_CONTROLLER_1_MODE
+  #define TUSB_CFG_CONTROLLER_1_MODE TUSB_MODE_NONE
+#endif
 
 #define CONTROLLER_HOST_NUMBER (\
-    ((TUSB_CFG_CONTROLLER0_MODE & TUSB_MODE_HOST) ? 1 : 0) + \
-    ((TUSB_CFG_CONTROLLER1_MODE & TUSB_MODE_HOST) ? 1 : 0))
+    ((TUSB_CFG_CONTROLLER_0_MODE & TUSB_MODE_HOST) ? 1 : 0) + \
+    ((TUSB_CFG_CONTROLLER_1_MODE & TUSB_MODE_HOST) ? 1 : 0))
 
 #define CONTROLLER_DEVICE_NUMBER (\
-    ((TUSB_CFG_CONTROLLER0_MODE & TUSB_MODE_DEVICE) ? 1 : 0) + \
-    ((TUSB_CFG_CONTROLLER1_MODE & TUSB_MODE_DEVICE) ? 1 : 0))
+    ((TUSB_CFG_CONTROLLER_0_MODE & TUSB_MODE_DEVICE) ? 1 : 0) + \
+    ((TUSB_CFG_CONTROLLER_1_MODE & TUSB_MODE_DEVICE) ? 1 : 0))
 
 #define MODE_HOST_SUPPORTED   (CONTROLLER_HOST_NUMBER > 0)
 #define MODE_DEVICE_SUPPORTED (CONTROLLER_DEVICE_NUMBER > 0)
 
 #if !MODE_HOST_SUPPORTED && !MODE_DEVICE_SUPPORTED
-  #error please configure at least 1 TUSB_CFG_CONTROLLERn_MODE to TUSB_MODE_HOST and/or TUSB_MODE_DEVICE
+  #error please configure at least 1 TUSB_CFG_CONTROLLER_N_MODE to TUSB_MODE_HOST and/or TUSB_MODE_DEVICE
 #endif
 
 //--------------------------------------------------------------------+
 // COMMON OPTIONS
 //--------------------------------------------------------------------+
-
-// level 3: ATTR_ALWAYS_INLINE is null, ASSERT has text, Error has its String
-// level 2: ATTR_ALWAYS_INLINE is attribute, ASSERT has no text, Error has no strings
-/// 0: no debug information 3: most debug information provided
+/**
+  determines the debug level for the stack
+  - Level 3: TBD
+  - Level 2: ATTR_ALWAYS_INLINE is null --> no function is inline
+  - Level 1: Print out if Assert failed. STATIC_VAR is NULL --> accessible when debugging
+  - Level 0: no debug information is generated
+*/
 #ifndef TUSB_CFG_DEBUG
-  #define TUSB_CFG_DEBUG 3
-  #warning TUSB_CFG_DEBUG is not defined, default value is 3
+  #define TUSB_CFG_DEBUG 0
+  #warning TUSB_CFG_DEBUG is not defined, default value is 0
 #endif
 
-/// USB RAM Section Placement, MCU's usb controller often has limited access to specific RAM region. This will be used to declare internal variables as follow:
-/// uint8_t tinyusb_data[10] TUSB_CFG_ATTR_USBRAM;
-/// if your mcu's usb controller has no such limit, define TUSB_CFG_ATTR_USBRAM as empty macro.
 #ifndef TUSB_CFG_ATTR_USBRAM
  #error TUSB_CFG_ATTR_USBRAM is not defined, please help me know how to place data in accessible RAM for usb controller
 #endif
 
-#if TUSB_CFG_OS == TUSB_OS_NONE
-  #ifndef TUSB_CFG_OS_TICKS_PER_SECOND
-    #error TUSB_CFG_OS_TICKS_PER_SECOND is required to use with OS_NONE
-  #endif
-#else
-  #ifndef TUSB_CFG_OS_TASK_PRIO
-    #error TUSB_CFG_OS_TASK_PRIO need to be defined (hint: use the highest if possible)
-  #endif
+
+#if (TUSB_CFG_OS != TUSB_OS_NONE) && !defined (TUSB_CFG_OS_TASK_PRIO)
+  #error TUSB_CFG_OS_TASK_PRIO need to be defined (hint: use the highest if possible)
 #endif
 
-#ifndef TUSB_CFG_CONFIGURATION_MAX
-  #define TUSB_CFG_CONFIGURATION_MAX 1
-  #warning TUSB_CFG_CONFIGURATION_MAX is not defined, default value is 1
-#endif
+//#ifndef TUSB_CFG_CONFIGURATION_MAX
+//  #define TUSB_CFG_CONFIGURATION_MAX 1
+//  #warning TUSB_CFG_CONFIGURATION_MAX is not defined, default value is 1
+//#endif
 
 //--------------------------------------------------------------------+
 // HOST OPTIONS
@@ -148,54 +147,33 @@
 
   //------------- HID CLASS -------------//
   #define HOST_CLASS_HID   ( TUSB_CFG_HOST_HID_KEYBOARD + TUSB_CFG_HOST_HID_MOUSE + TUSB_CFG_HOST_HID_GENERIC )
-  #if HOST_CLASS_HID
-    #define HOST_HCD_XFER_INTERRUPT
-  #endif
+//  #if HOST_CLASS_HID
+//    #define HOST_HCD_XFER_INTERRUPT
+//  #endif
 
   #ifndef TUSB_CFG_HOST_ENUM_BUFFER_SIZE
     #define TUSB_CFG_HOST_ENUM_BUFFER_SIZE 256
-    #warning TUSB_CFG_HOST_ENUM_BUFFER_SIZE is not defined, default value is 256
   #endif
 
   //------------- CLASS -------------//
-#endif // end TUSB_CFG_HOST
+#endif // MODE_HOST_SUPPORTED
 
 //--------------------------------------------------------------------+
 // DEVICE OPTIONS
 //--------------------------------------------------------------------+
 #if MODE_DEVICE_SUPPORTED
 
-#if defined(CAP_DEVICE_ROMDRIVER) && !TUSB_CFG_DEVICE_USE_ROM_DRIVER
-  #error only rom driver for these mcu are supported now
-#endif
+ #define DEVICE_CLASS_HID ( TUSB_CFG_DEVICE_HID_KEYBOARD + TUSB_CFG_DEVICE_HID_MOUSE + TUSB_CFG_DEVICE_HID_GENERIC )
 
-#define DEVICE_CLASS_HID ( TUSB_CFG_DEVICE_HID_KEYBOARD + TUSB_CFG_DEVICE_HID_MOUSE + TUSB_CFG_DEVICE_HID_GENERIC )
+ #if TUSB_CFG_DEVICE_CONTROL_ENDOINT_SIZE > 64
+  #error Control Endpoint Max Package Size cannot larger than 64
+ #endif
 
+ #ifndef TUSB_CFG_DEVICE_ENUM_BUFFER_SIZE
+   #define TUSB_CFG_DEVICE_ENUM_BUFFER_SIZE 256
+ #endif
 
-#endif
-
-
-
-#define USB_FS_MAX_BULK_PACKET  64
-#define USB_HS_MAX_BULK_PACKET  USB_FS_MAX_BULK_PACKET /* Full speed device only */
-
-/* HID In/Out Endpoint Address */
-#define    HID_KEYBOARD_EP_IN       ENDPOINT_IN_LOGICAL_TO_PHYSICAL(1)
-#define    HID_MOUSE_EP_IN          ENDPOINT_IN_LOGICAL_TO_PHYSICAL(4)
-
-/* CDC Endpoint Address */
-#define  CDC_NOTIFICATION_EP                ENDPOINT_IN_LOGICAL_TO_PHYSICAL(2)
-#define  CDC_DATA_EP_OUT                    ENDPOINT_OUT_LOGICAL_TO_PHYSICAL(3)
-#define  CDC_DATA_EP_IN                     ENDPOINT_IN_LOGICAL_TO_PHYSICAL(3)
-
-#define  CDC_NOTIFICATION_EP_MAXPACKETSIZE  8
-#define  CDC_DATA_EP_MAXPACKET_SIZE         16
-
-
-
-#ifdef __cplusplus
- }
-#endif
+#endif // MODE_DEVICE_SUPPORTED
 
 #endif /* _TUSB_TUSB_OPTION_H_ */
 

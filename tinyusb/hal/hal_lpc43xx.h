@@ -36,40 +36,24 @@
 */
 /**************************************************************************/
 
-/** \file
- *  \brief TBD
- *
- *  \note TBD
- */
-
-/** \ingroup TBD
- *  \defgroup TBD
- *  \brief TBD
- *
- *  @{
- */
-
 #ifndef _TUSB_HAL_LPC43XX_H_
 #define _TUSB_HAL_LPC43XX_H_
 
 #include "LPC43xx.h"
-
-#define NXP_ROMDRIVER_REG_BASE        LPC_USB0_BASE // TODO USB1
-#define NXP_ROMDRIVER_FUNCTION_ADDR     0x1040011C
+#include "lpc43xx_cgu.h"
 
 #ifdef __cplusplus
  extern "C" {
 #endif
 
-
-static inline void hal_interrupt_enable(uint8_t controller_id)
+static inline void hal_interrupt_enable(uint8_t coreid)
 {
-  NVIC_EnableIRQ(controller_id ? USB1_IRQn : USB0_IRQn);
+  NVIC_EnableIRQ(coreid ? USB1_IRQn : USB0_IRQn);
 }
 
-static inline void hal_interrupt_disable(uint8_t controller_id)
+static inline void hal_interrupt_disable(uint8_t coreid)
 {
-  NVIC_DisableIRQ(controller_id ? USB1_IRQn : USB0_IRQn);
+  NVIC_DisableIRQ(coreid ? USB1_IRQn : USB0_IRQn);
 }
 
 #ifdef __cplusplus
@@ -78,4 +62,3 @@ static inline void hal_interrupt_disable(uint8_t controller_id)
 
 #endif /* _TUSB_HAL_LPC43XX_H_ */
 
-/** @} */

@@ -38,17 +38,19 @@
 
 #include <stdlib.h>
 #include "unity.h"
-#include "errors.h"
+#include "tusb_errors.h"
 #include "type_helper.h"
 
 #include "mock_osal.h"
 #include "usbh.h"
+#include "mock_hub.h"
 #include "usbh_hcd.h"
 #include "mock_hcd.h"
 
 #include "mock_tusb_callback.h"
 #include "mock_hid_host.h"
 #include "mock_cdc_host.h"
+#include "mock_msc_host.h"
 #include "host_helper.h"
 
 uint8_t dev_addr;
@@ -87,26 +89,27 @@ void test_usbh_init_hcd_failed(void)
   TEST_ASSERT_EQUAL(TUSB_ERROR_HCD_FAILED, usbh_init());
 }
 
-void test_usbh_init_enum_task_create_failed(void)
-{
-  hcd_init_ExpectAndReturn(TUSB_ERROR_NONE);
-  osal_task_create_IgnoreAndReturn(TUSB_ERROR_OSAL_TASK_FAILED);
-  TEST_ASSERT_EQUAL(TUSB_ERROR_OSAL_TASK_FAILED, usbh_init());
-}
-
 void test_usbh_init_enum_queue_create_failed(void)
 {
   hcd_init_ExpectAndReturn(TUSB_ERROR_NONE);
-  osal_task_create_IgnoreAndReturn(TUSB_ERROR_NONE);
   osal_queue_create_IgnoreAndReturn(NULL);
   TEST_ASSERT_EQUAL(TUSB_ERROR_OSAL_QUEUE_FAILED, usbh_init());
 }
 
+void test_usbh_init_enum_task_create_failed(void)
+{
+  hcd_init_ExpectAndReturn(TUSB_ERROR_NONE);
+  osal_queue_create_IgnoreAndReturn((osal_queue_handle_t) 0x1234);
+  osal_task_create_IgnoreAndReturn(TUSB_ERROR_OSAL_TASK_FAILED);
+  TEST_ASSERT_EQUAL(TUSB_ERROR_OSAL_TASK_FAILED, usbh_init());
+}
+
+
 void test_usbh_init_semaphore_create_failed(void)
 {
   hcd_init_ExpectAndReturn(TUSB_ERROR_NONE);
-  osal_task_create_IgnoreAndReturn(TUSB_ERROR_NONE);
   osal_queue_create_IgnoreAndReturn((osal_queue_handle_t) 0x1234);
+  osal_task_create_IgnoreAndReturn(TUSB_ERROR_NONE);
   osal_semaphore_create_IgnoreAndReturn(NULL);
   TEST_ASSERT_EQUAL(TUSB_ERROR_OSAL_SEMAPHORE_FAILED, usbh_init());
 }
@@ -114,8 +117,8 @@ void test_usbh_init_semaphore_create_failed(void)
 void test_usbh_init_mutex_create_failed(void)
 {
   hcd_init_ExpectAndReturn(TUSB_ERROR_NONE);
-  osal_task_create_IgnoreAndReturn(TUSB_ERROR_NONE);
   osal_queue_create_IgnoreAndReturn((osal_queue_handle_t) 0x1234);
+  osal_task_create_IgnoreAndReturn(TUSB_ERROR_NONE);
   osal_semaphore_create_IgnoreAndReturn((osal_semaphore_handle_t) 0x1234);
   osal_mutex_create_IgnoreAndReturn(NULL);
   TEST_ASSERT_EQUAL(TUSB_ERROR_OSAL_MUTEX_FAILED, usbh_init());
@@ -137,8 +140,9 @@ void test_usbh_init_ok(void)
   }
 }
 
+#if 0 // TODO TEST enable this
 // device is not mounted before, even the control pipe is not open, do nothing
-void test_usbh_device_unplugged_isr_device_not_previously_mounted(void)
+void test_usbh_hcd_rhport_unplugged_isr_device_not_previously_mounted(void)
 {
   uint8_t dev_addr = 1;
 
@@ -147,10 +151,10 @@ void test_usbh_device_unplugged_isr_device_not_previously_mounted(void)
   usbh_devices[dev_addr].hub_addr = 0;
   usbh_devices[dev_addr].hub_port = 0;
 
-  usbh_device_unplugged_isr(0);
+  usbh_hcd_rhport_unplugged_isr(0);
 }
 
-void test_usbh_device_unplugged_isr(void)
+void test_usbh_hcd_rhport_unplugged_isr(void)
 {
   uint8_t dev_addr = 1;
 
@@ -158,16 +162,40 @@ void test_usbh_device_unplugged_isr(void)
   usbh_devices[dev_addr].core_id              = 0;
   usbh_devices[dev_addr].hub_addr             = 0;
   usbh_devices[dev_addr].hub_port             = 0;
-  usbh_devices[dev_addr].flag_supported_class = TUSB_CLASS_FLAG_HID;
+  usbh_devices[dev_addr].flag_supported_class = BIT_(TUSB_CLASS_HID);
 
-  helper_class_close_expect(dev_addr);
+  hidh_close_Expect(dev_addr);
   hcd_pipe_control_close_ExpectAndReturn(dev_addr, TUSB_ERROR_NONE);
 
   //------------- Code Under Test -------------//
-  usbh_device_unplugged_isr(0);
+  usbh_hcd_rhport_unplugged_isr(0);
 
   TEST_ASSERT_EQUAL(TUSB_DEVICE_STATE_REMOVING, usbh_devices[dev_addr].state);
 }
+
+void test_usbh_device_unplugged_multple_class(void)
+{
+  uint8_t dev_addr = 1;
+
+  usbh_devices[dev_addr].state                = TUSB_DEVICE_STATE_CONFIGURED;
+  usbh_devices[dev_addr].core_id              = 0;
+  usbh_devices[dev_addr].hub_addr             = 0;
+  usbh_devices[dev_addr].hub_port             = 0;
+  usbh_devices[dev_addr].flag_supported_class = BIT_(TUSB_CLASS_HID) | BIT_(TUSB_CLASS_MSC) | BIT_(TUSB_CLASS_CDC);
+
+  cdch_close_Expect(dev_addr);
+  hidh_close_Expect(dev_addr);
+  msch_close_Expect(dev_addr);
+
+  hcd_pipe_control_close_ExpectAndReturn(dev_addr, TUSB_ERROR_NONE);
+
+  //------------- Code Under Test -------------//
+  usbh_hcd_rhport_unplugged_isr(0);
+
+  TEST_ASSERT_EQUAL(TUSB_DEVICE_STATE_REMOVING, usbh_devices[dev_addr].state);
+
+}
+#endif
 
 void semaphore_wait_success_stub(osal_mutex_handle_t const sem_hdl, uint32_t msec, tusb_error_t *p_error, int num_call)
 {
@@ -218,3 +246,8 @@ void test_usbh_control_xfer_ok(void)
   //------------- Code Under Test -------------//
   usbh_control_xfer_subtask(dev_addr, 1, 2, 3, 4, 0, NULL);
 }
+
+//void test_usbh_xfer_isr_non_control_stalled(void) // do nothing for stall on control
+//{
+//
+//}

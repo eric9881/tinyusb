@@ -36,12 +36,9 @@
 */
 /**************************************************************************/
 
-/** \ingroup TBD
- *  \defgroup TBD
- *  \brief TBD
- *
- *  @{
- */
+/** \ingroup group_class
+ *  \defgroup Group_Custom Custom Class (not supported yet)
+ *  @{ */
 
 #ifndef _TUSB_CUSTOM_CLASS_H_
 #define _TUSB_CUSTOM_CLASS_H_
@@ -66,7 +63,8 @@ STATIC_ INLINE_ bool tusbh_custom_is_mounted(uint8_t dev_addr, uint16_t vendor_i
 {
   (void) vendor_id; // TODO check this later
   (void) product_id;
-  return (tusbh_device_get_mounted_class_flag(dev_addr) & BIT_(TUSB_CLASS_MAPPED_INDEX_END-1) ) != 0;
+//  return (tusbh_device_get_mounted_class_flag(dev_addr) & BIT_(TUSB_CLASS_MAPPED_INDEX_END-1) ) != 0;
+  return false;
 }
 
 tusb_error_t tusbh_custom_read(uint8_t dev_addr, uint16_t vendor_id, uint16_t product_id, void * p_buffer, uint16_t length);

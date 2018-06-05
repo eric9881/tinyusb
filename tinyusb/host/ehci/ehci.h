@@ -36,23 +36,17 @@
 */
 /**************************************************************************/
 
-/** \file
- *  \brief EHCI
- *
- *  \note TBD
- */
-
 /** \ingroup Group_HCD
+ * @{
  *  \defgroup EHCI
  *  \brief EHCI driver. All documents sources mentioned here (eg section 3.5) is referring to EHCI Specs unless state otherwise
- *
- *  @{
- */
+ *  @{ */
 
 #ifndef _TUSB_EHCI_H_
 #define _TUSB_EHCI_H_
 
 #include "common/common.h"
+#include "../hcd.h"
 
 /* Abbreviation
  * HC: Host Controller
@@ -74,21 +68,20 @@
 //--------------------------------------------------------------------+
 // EHCI CONFIGURATION & CONSTANTS
 //--------------------------------------------------------------------+
+#define HOST_HCD_XFER_INTERRUPT // TODO interrupt is used widely, should always be enalbed
 #define EHCI_PERIODIC_LIST (defined HOST_HCD_XFER_INTERRUPT || defined HOST_HCD_XFER_ISOCHRONOUS)
-
-// TODO allow user to configure
-#define EHCI_MAX_QHD  8
-#define EHCI_MAX_QTD  12
-#define EHCI_MAX_ITD  4
-#define EHCI_MAX_SITD 16
 
 #define	EHCI_CFG_FRAMELIST_SIZE_BITS			7			/// Framelist Size (NXP specific) (0:1024) - (1:512) - (2:256) - (3:128) - (4:64) - (5:32) - (6:16) - (7:8)
 #define EHCI_FRAMELIST_SIZE  (1024 >> EHCI_CFG_FRAMELIST_SIZE_BITS)
 
+// TODO merge OHCI with EHCI
+enum {
+  EHCI_MAX_ITD  = 4,
+  EHCI_MAX_SITD = 16
+};
+
 //------------- Validation -------------//
-#if EHCI_CFG_FRAMELIST_SIZE_BITS > 7
- #error EHCI_CFG_FRAMELIST_SIZE_BITS must be from 0-7
-#endif
+STATIC_ASSERT(EHCI_CFG_FRAMELIST_SIZE_BITS <= 7, "incorrect value");
 
 //--------------------------------------------------------------------+
 // EHCI Data Structure
@@ -100,7 +93,7 @@ enum ehci_queue_element_type_{
   EHCI_QUEUE_ELEMENT_FSTN      ///< 3
 };
 
-/// TBD
+/// EHCI PID
 enum tusb_pid_{
   EHCI_PID_OUT = 0 ,
   EHCI_PID_IN      ,
@@ -126,9 +119,9 @@ typedef struct {
 	union{
 	  ehci_link_t alternate;
 	  struct {
-	    uint32_t      : 5;
-	    uint32_t used : 1;
-	    uint32_t : 10;
+	    uint32_t                : 5;
+	    uint32_t used           : 1;
+	    uint32_t                : 10;
 	    uint32_t expected_bytes : 16;
 	  };
 	};
@@ -157,8 +150,10 @@ typedef struct {
 	uint32_t buffer[5];
 } ehci_qtd_t; // XXX qtd is used to declare overlay in ehci_qhd_t -> cannot be declared with ATTR_ALIGNED(32)
 
+STATIC_ASSERT( sizeof(ehci_qtd_t) == 32, "size is not correct" );
+
 /// Queue Head (section 3.6)
-typedef struct {
+typedef struct ATTR_ALIGNED(32) {
 	/// Word 0: Queue Head Horizontal Link Pointer
 	ehci_link_t next;
 
@@ -203,12 +198,14 @@ typedef struct {
 	uint8_t interval_ms; // polling interval in frames (or milisecond)
 	uint8_t reserved;
 
-	ehci_qtd_t *p_qtd_list_head;	// head of the scheduled TD list
-	ehci_qtd_t *p_qtd_list_tail;	// tail of the scheduled TD list
-}ATTR_ALIGNED(32) ehci_qhd_t;
+	ehci_qtd_t * volatile p_qtd_list_head;	// head of the scheduled TD list
+	ehci_qtd_t * volatile p_qtd_list_tail;	// tail of the scheduled TD list
+} ehci_qhd_t;
+
+STATIC_ASSERT( sizeof(ehci_qhd_t) == 64, "size is not correct" );
 
 /// Highspeed Isochronous Transfer Descriptor (section 3.3)
-typedef struct {
+typedef struct ATTR_ALIGNED(32) {
 	/// Word 0: Next Link Pointer
 	ehci_link_t next;
 
@@ -235,10 +232,12 @@ typedef struct {
 //	uint32_t used;
 //	uint32_t IhdIdx;
 //	uint32_t reserved[6];
-}ATTR_ALIGNED(32) ehci_itd_t;
+} ehci_itd_t;
+
+STATIC_ASSERT( sizeof(ehci_itd_t) == 64, "size is not correct" );
 
 /// Split (Full-Speed) Isochronous Transfer Descriptor
-typedef struct {
+typedef struct ATTR_ALIGNED(32) {
   /// Word 0: Next Link Pointer
 	ehci_link_t next;
 
@@ -293,11 +292,13 @@ typedef struct {
 	/*---------- Word 6 ----------*/
 	ehci_link_t back;
 
-	/// SITD is 32-byte aligned but occupies only 28 --> 6 bytes for storing extra data
+	/// SITD is 32-byte aligned but occupies only 28 --> 4 bytes for storing extra data
 	uint8_t used;
-	uint8_t IhdIdx;
+	uint8_t ihd_idx;
 	uint8_t reserved2[2];
-}ATTR_ALIGNED(32) ehci_sitd_t;
+} ehci_sitd_t;
+
+STATIC_ASSERT( sizeof(ehci_sitd_t) == 32, "size is not correct" );
 
 //--------------------------------------------------------------------+
 // EHCI Operational Register
@@ -466,15 +467,12 @@ typedef struct {
       ehci_qtd_t qtd[3];
     }control;
 
-    ehci_qhd_t  qhd[EHCI_MAX_QHD]                  ; ///< Queue Head Pool
-    ehci_qtd_t  qtd[EHCI_MAX_QTD] ATTR_ALIGNED(32) ; ///< Queue Element Transfer Pool
+    ehci_qhd_t  qhd[HCD_MAX_ENDPOINT]                  ; ///< Queue Head Pool
+    ehci_qtd_t  qtd[HCD_MAX_XFER] ATTR_ALIGNED(32) ; ///< Queue Element Transfer Pool
 //  ehci_itd_t  itd[EHCI_MAX_ITD]                  ; ///< Iso Transfer Pool
 //  ehci_sitd_t sitd[EHCI_MAX_SITD]                ; ///< Split (FS) Isochronous Transfer Pool
   }device[TUSB_CFG_HOST_DEVICE_MAX];
 }ehci_data_t;
-
-//For NXP's MCU, host/device mode must be set immediately after a reset
-tusb_error_t hcd_controller_reset(uint8_t hostid) ATTR_WARN_UNUSED_RESULT;
 
 #ifdef __cplusplus
  }
@@ -482,5 +480,6 @@ tusb_error_t hcd_controller_reset(uint8_t hostid) ATTR_WARN_UNUSED_RESULT;
 
 #endif /* _TUSB_EHCI_H_ */
 
+/** @} */
 /** @} */
 

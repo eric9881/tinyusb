@@ -36,13 +36,9 @@
 */
 /**************************************************************************/
 
-/** \defgroup Group_Common Common Files
- * @{
- *
+/** \ingroup Group_Common
  *  \defgroup Group_CommonH common.h
- *
- *  @{
- */
+ *  @{ */
 
 #ifndef _TUSB_COMMON_H_
 #define _TUSB_COMMON_H_
@@ -56,7 +52,8 @@
 //--------------------------------------------------------------------+
 
 //------------- Standard Header -------------//
-#include "primitive_types.h"
+#include <stdbool.h>
+#include <stdint.h>
 #include <stddef.h>
 #include <string.h>
 #include <stdio.h>
@@ -68,20 +65,18 @@
 #include "compiler/compiler.h"
 #include "assertion.h"
 #include "binary.h"
-#include "errors.h"
+#include "tusb_errors.h"
 
 //------------- TUSB Header -------------//
-#include "core/tusb_types.h"
-#include "core/std_descriptors.h"
-#include "core/std_request.h"
+#include "tusb_types.h"
+#include "std_descriptors.h"
+#include "std_request.h"
 
 //--------------------------------------------------------------------+
 // MACROS
 //--------------------------------------------------------------------+
-#define STRING_(x)  #x                             // stringify without expand
-#define XSTRING_(x) STRING_(x)                     // expand then stringify
-#define STRING_CONCAT_(a, b) a##b                  // concat without expand
-#define XSTRING_CONCAT_(a, b) STRING_CONCAT_(a, b) // expand then concat
+#define MAX_OF(a, b)  ( (a) > (b) ? (a) : (b) )
+#define MIN_OF(a, b)  ( (a) < (b) ? (a) : (b) )
 
 #define U16_HIGH_U8(u16) ((uint8_t) (((u16) >> 8) & 0x00ff))
 #define U16_LOW_U8(u16)  ((uint8_t) ((u16)       & 0x00ff))
@@ -96,20 +91,31 @@
 #define U32_TO_U8S_BE(u32) U32_B1_U8(u32), U32_B2_U8(u32), U32_B3_U8(u32), U32_B4_U8(u32)
 #define U32_TO_U8S_LE(u32) U32_B4_U8(u32), U32_B3_U8(u32), U32_B2_U8(u32), U32_B1_U8(u32)
 
+//------------- Endian Conversion -------------//
+#define ENDIAN_BE(u32) \
+    (uint32_t) ( (((u32) & 0xFF) << 24) | (((u32) & 0xFF00) << 8) | (((u32) >> 8) & 0xFF00) | (((u32) >> 24) & 0xFF) )
+
+#define ENDIAN_BE16(le16) ((uint16_t) ((U16_LOW_U8(le16) << 8) | U16_HIGH_U8(le16)) )
+
+#ifndef __n2be_16
+#define __n2be_16(u16)  ((uint16_t) ((U16_LOW_U8(u16) << 8) | U16_HIGH_U8(u16)) )
+#define __be2n_16(u16)  __n2be_16(u16)
+#endif
+
 //--------------------------------------------------------------------+
 // INLINE FUNCTION
 //--------------------------------------------------------------------+
-#define memclr_(buffer, size)  memset(buffer, 0, size)
+#define memclr_(buffer, size)  memset((buffer), 0, (size))
 
 
-static inline uint8_t const * descriptor_next(uint8_t const * p_desc) ATTR_ALWAYS_INLINE ATTR_PURE;
-static inline uint8_t const * descriptor_next(uint8_t const * p_desc)
+static inline uint8_t const * descriptor_next(uint8_t const p_desc[]) ATTR_ALWAYS_INLINE ATTR_PURE;
+static inline uint8_t const * descriptor_next(uint8_t const p_desc[])
 {
   return p_desc + p_desc[DESCRIPTOR_OFFSET_LENGTH];
 }
 
-static inline uint8_t descriptor_typeof(uint8_t const * p_desc) ATTR_ALWAYS_INLINE ATTR_PURE;
-static inline uint8_t descriptor_typeof(uint8_t const * p_desc)
+static inline uint8_t descriptor_typeof(uint8_t const p_desc[]) ATTR_ALWAYS_INLINE ATTR_PURE;
+static inline uint8_t descriptor_typeof(uint8_t const p_desc[])
 {
   return p_desc[DESCRIPTOR_OFFSET_TYPE];
 }
@@ -119,19 +125,25 @@ static inline uint8_t descriptor_typeof(uint8_t const * p_desc)
 static inline uint32_t u32_from_u8(uint8_t b1, uint8_t b2, uint8_t b3, uint8_t b4) ATTR_ALWAYS_INLINE ATTR_CONST;
 static inline uint32_t u32_from_u8(uint8_t b1, uint8_t b2, uint8_t b3, uint8_t b4)
 {
-  return (b1 << 24) + (b2 << 16) + (b3 << 8) + b4;
+  return ( ((uint32_t) b1) << 24) + ( ((uint32_t) b2) << 16) + ( ((uint32_t) b3) << 8) + b4;
 }
 
 static inline uint8_t u16_high_u8(uint16_t u16) ATTR_CONST ATTR_ALWAYS_INLINE;
 static inline uint8_t u16_high_u8(uint16_t u16)
 {
-  return (uint8_t) ((u16 >> 8) & 0x00ff);
+  return (uint8_t) ( ((uint16_t) (u16 >> 8)) & 0x00ff);
 }
 
 static inline uint8_t u16_low_u8(uint16_t u16) ATTR_CONST ATTR_ALWAYS_INLINE;
 static inline uint8_t u16_low_u8(uint16_t u16)
 {
   return (uint8_t) (u16 & 0x00ff);
+}
+
+static inline uint16_t u16_le2be(uint16_t u16) ATTR_CONST ATTR_ALWAYS_INLINE;
+static inline uint16_t u16_le2be(uint16_t u16)
+{
+  return ((uint16_t)(u16_low_u8(u16) << 8)) | u16_high_u8(u16);
 }
 
 //------------- Min -------------//
@@ -160,6 +172,12 @@ static inline uint32_t max32_of(uint32_t x, uint32_t y)
   return (x > y) ? x : y;
 }
 
+static inline uint16_t max16_of(uint16_t x, uint16_t y) ATTR_ALWAYS_INLINE ATTR_CONST;
+static inline uint16_t max16_of(uint16_t x, uint16_t y)
+{
+  return (x > y) ? x : y;
+}
+
 //------------- Align -------------//
 static inline uint32_t align32 (uint32_t value) ATTR_ALWAYS_INLINE ATTR_CONST;
 static inline uint32_t align32 (uint32_t value)
@@ -176,7 +194,7 @@ static inline uint32_t align16 (uint32_t value)
 static inline uint32_t align_n (uint32_t alignment, uint32_t value) ATTR_ALWAYS_INLINE ATTR_CONST;
 static inline uint32_t align_n (uint32_t alignment, uint32_t value)
 {
-	return value & (~(alignment-1));
+	return value & ((uint32_t) ~(alignment-1));
 }
 
 static inline uint32_t align4k (uint32_t value) ATTR_ALWAYS_INLINE ATTR_CONST;
@@ -192,6 +210,13 @@ static inline uint32_t offset4k(uint32_t value)
 }
 
 //------------- Mathematics -------------//
+static inline uint32_t abs_of(int32_t value) ATTR_ALWAYS_INLINE ATTR_CONST;
+static inline uint32_t abs_of(int32_t value)
+{
+  return (value < 0) ? (-value) : value;
+}
+
+
 /// inclusive range checking
 static inline bool is_in_range(uint32_t lower, uint32_t value, uint32_t upper) ATTR_ALWAYS_INLINE ATTR_CONST;
 static inline bool is_in_range(uint32_t lower, uint32_t value, uint32_t upper)
@@ -206,7 +231,7 @@ static inline bool is_in_range_exclusive(uint32_t lower, uint32_t value, uint32_
   return (lower < value) && (value < upper);
 }
 
-
+// TODO use clz
 static inline uint8_t log2_of(uint32_t value) ATTR_ALWAYS_INLINE ATTR_CONST;
 static inline uint8_t log2_of(uint32_t value)
 {
@@ -244,5 +269,4 @@ static inline uint8_t cardinality_of(uint32_t value)
 
 #endif /* _TUSB_COMMON_H_ */
 
-/**  @} */
 /**  @} */

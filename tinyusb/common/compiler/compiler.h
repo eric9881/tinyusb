@@ -36,36 +36,60 @@
 */
 /**************************************************************************/
 
-/** \file
- *  \brief Compiler Header
- *
- *  \note TBD
- */
-
 /** \ingroup Group_Common
  *  \defgroup Group_Compiler Compiler
  *  \brief Group_Compiler brief
- *
- *  @{
- */
+ *  @{ */
 
 #ifndef _TUSB_COMPILER_H_
 #define _TUSB_COMPILER_H_
 
-#ifdef _TEST_
-  #define ATTR_ALWAYS_INLINE
-  #define STATIC_
-  #define INLINE_
-#else
-  #define STATIC_ static
-  #define INLINE_ inline
+#define STRING_(x)  #x                             ///< stringify without expand
+#define XSTRING_(x) STRING_(x)                     ///< expand then stringify
+#define STRING_CONCAT_(a, b) a##b                  ///< concat without expand
+#define XSTRING_CONCAT_(a, b) STRING_CONCAT_(a, b) ///< expand then concat
 
-  #if TUSB_CFG_DEBUG == 3
-    #define ATTR_ALWAYS_INLINE // no inline for debug = 3
+//--------------------------------------------------------------------+
+// Compile-time Assert
+//--------------------------------------------------------------------+
+#ifdef __ICCARM__
+  #define STATIC_ASSERT static_assert
+#else
+  #if defined __COUNTER__ && __COUNTER__ != __COUNTER__
+    #define _ASSERT_COUNTER __COUNTER__
+  #else
+    #define _ASSERT_COUNTER __LINE__
   #endif
+
+  #define STATIC_ASSERT(const_expr, message) enum { XSTRING_CONCAT_(static_assert_, _ASSERT_COUNTER) = 1/(!!(const_expr)) }
 #endif
 
-// TODO refractor ATTR_PACKED(x)
+#ifndef _TEST_
+  // TODO move some to tusb_option.h
+  #define STATIC_     static
+  #define INLINE_     inline
+  #define ATTR_TEST_WEAK
+
+  // allow debugger to watch any module-wide variables anywhere
+  #if TUSB_CFG_DEBUG
+    #define STATIC_VAR
+  #else
+    #define STATIC_VAR static
+  #endif
+
+  // function will not be inline for easy step by step debugging
+  #if TUSB_CFG_DEBUG >= 2
+    #define ATTR_ALWAYS_INLINE
+  #endif
+
+#else // TODO remove this, try to pass using compiler command option
+  #define ATTR_ALWAYS_INLINE
+  #define STATIC_
+  #define STATIC_VAR
+  #define INLINE_
+
+#endif
+
 #if defined(__GNUC__)
   #include "compiler_gcc.h"
 #elif defined __ICCARM__ // IAR compiler
@@ -73,4 +97,5 @@
 #endif
 
 #endif /* _TUSB_COMPILER_H_ */
+
 /// @}

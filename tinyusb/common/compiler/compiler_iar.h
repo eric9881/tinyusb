@@ -52,10 +52,35 @@
  extern "C" {
 #endif
 
-#define ALIGN_OF(x) __ALIGNOF__(x)
+#define ALIGN_OF(x)     __ALIGNOF__(x)
 
+#define ATTR_PACKED_STRUCT(x)     __packed x
 #define ATTR_PREPACKED  __packed
 #define ATTR_PACKED
+//#define ATTR_SECTION(section)      _Pragma((#section))
+
+#define ATTR_ALIGNED(bytes)        _Pragma(XSTRING_(data_alignment=##bytes))
+
+#ifndef ATTR_ALWAYS_INLINE
+/// Generally, functions are not inlined unless optimization is specified. For functions declared inline, this attribute inlines the function even if no optimization level is specified
+#define ATTR_ALWAYS_INLINE         error
+#endif
+
+#define ATTR_PURE   // TODO IAR pure function attribute
+#define ATTR_CONST  // TODO IAR const function attribute
+#define ATTR_WEAK                 __weak
+
+#define ATTR_WARN_UNUSED_RESULT
+#define ATTR_USED
+#define ATTR_UNUSED
+
+// built-in function to convert 32-bit Big-Endian to Little-Endian
+//#if __LITTLE_ENDIAN__
+#define __be2n   __REV
+#define __n2be   __be2n
+
+#define __n2be_16(u16)  ((uint16_t) __REV16(u16))
+#define __be2n_16(u16)  __n2be_16(u16)
 
 #ifdef __cplusplus
  }

@@ -36,40 +36,53 @@
 */
 /**************************************************************************/
 
-/** \ingroup TBD
- *  \defgroup TBD
- *  \brief TBD
- *
- *  @{
- */
+/** \ingroup group_usbd
+ *  @{ */
 
 #ifndef _TUSB_USBD_H_
 #define _TUSB_USBD_H_
-
-//--------------------------------------------------------------------+
-// INCLUDE
-//--------------------------------------------------------------------+
-#include "common/common.h"
-#include "osal/osal.h" // TODO refractor move to common.h ?
-
-#ifdef _TINY_USB_SOURCE_FILE_
-#include "dcd.h" // TODO hide from application include
-#endif
-//#include "tusb_descriptors.h"
 
 #ifdef __cplusplus
  extern "C" {
 #endif
 
 //--------------------------------------------------------------------+
+// INCLUDE
+//--------------------------------------------------------------------+
+#include "common/common.h"
+#include "osal/osal.h"
+#include "dcd.h"
+
+//--------------------------------------------------------------------+
 // MACRO CONSTANT TYPEDEF
 //--------------------------------------------------------------------+
+// LPC11uxx and LPC13uxx requires each buffer has to be 64-byte alignment
+#if TUSB_CFG_MCU == MCU_LPC11UXX || TUSB_CFG_MCU == MCU_LPC13UXX
+ #define ATTR_USB_MIN_ALIGNMENT   ATTR_ALIGNED(64)
+#else
+ #define ATTR_USB_MIN_ALIGNMENT
+#endif
+
+/// \brief Descriptor pointer collector to all the needed.
 typedef struct {
-  tusb_error_t (* const init)(uint8_t, tusb_descriptor_interface_t const *, uint16_t*);
-  tusb_error_t (* const control_request) (uint8_t, tusb_control_request_t const *);
-//  void (* const isr) (pipe_handle_t, tusb_event_t);
-//  void (* const close) (uint8_t);
-} device_class_driver_t;
+  uint8_t const * p_device;              ///< pointer to device descritpor \ref tusb_descriptor_device_t
+  uint8_t const * p_configuration;       ///< pointer to the whole configuration descriptor, starting by \ref tusb_descriptor_configuration_t
+  uint8_t const** p_string_arr;          ///< a array of pointers to string descriptors
+
+  uint8_t const * p_hid_keyboard_report; ///< pointer to HID report descriptor of Keybaord interface. Only needed if TUSB_CFG_DEVICE_HID_KEYBOARD is enabled
+  uint8_t const * p_hid_mouse_report;    ///< pointer to HID report descriptor of Mouse interface. Only needed if TUSB_CFG_DEVICE_HID_MOUSE is enabled
+}tusbd_descriptor_pointer_t;
+
+// define by application
+extern tusbd_descriptor_pointer_t tusbd_descriptor_pointers;
+
+typedef struct {
+  void (* const init) (void);
+  tusb_error_t (* const open)(uint8_t, tusb_descriptor_interface_t const *, uint16_t*);
+  tusb_error_t (* const control_request_subtask) (uint8_t, tusb_control_request_t const *);
+  tusb_error_t (* const xfer_cb) (endpoint_handle_t, tusb_event_t, uint32_t);
+  void (* const close) (uint8_t);
+} usbd_class_driver_t;
 
 //--------------------------------------------------------------------+
 // INTERNAL OBJECT & FUNCTION DECLARATION
@@ -79,14 +92,17 @@ typedef struct {
 // APPLICATION API
 //--------------------------------------------------------------------+
 bool tusbd_is_configured(uint8_t coreid) ATTR_WARN_UNUSED_RESULT;
+//void tusbd_device_suspended_cb(uint8_t coreid);
 
 //--------------------------------------------------------------------+
 // CLASS-USBD & INTERNAL API
 //--------------------------------------------------------------------+
 #ifdef _TINY_USB_SOURCE_FILE_
 
+extern osal_semaphore_handle_t usbd_control_xfer_sem_hdl;
+
 tusb_error_t usbd_init(void);
-tusb_error_t usbd_pipe_open(uint8_t coreid, tusb_descriptor_interface_t const * p_interfacae, tusb_descriptor_endpoint_t const * p_endpoint_desc);
+OSAL_TASK_FUNCTION (usbd_task, p_task_para);
 
 #endif
 

@@ -54,17 +54,33 @@
 //--------------------------------------------------------------------+
 #define RNDIS_MSG_PAYLOAD_MAX   (1024*4)
 
-static uint8_t msg_notification[TUSB_CFG_HOST_DEVICE_MAX][8] TUSB_CFG_ATTR_USBRAM;
-static uint32_t msg_payload[RNDIS_MSG_PAYLOAD_MAX/4]  TUSB_CFG_ATTR_USBRAM;
+TUSB_CFG_ATTR_USBRAM static uint8_t msg_notification[TUSB_CFG_HOST_DEVICE_MAX][8];
+TUSB_CFG_ATTR_USBRAM ATTR_ALIGNED(4) static uint8_t msg_payload[RNDIS_MSG_PAYLOAD_MAX];
 
-STATIC_ rndish_data_t rndish_data[TUSB_CFG_HOST_DEVICE_MAX];
+STATIC_VAR rndish_data_t rndish_data[TUSB_CFG_HOST_DEVICE_MAX];
 
-// TODO Microsoft requires message length for any get command must be at least 0x400 bytes
+// TODO Microsoft requires message length for any get command must be at least 4096 bytes
 
 //--------------------------------------------------------------------+
 // INTERNAL OBJECT & FUNCTION DECLARATION
 //--------------------------------------------------------------------+
 static tusb_error_t rndis_body_subtask(void);
+static tusb_error_t send_message_get_response_subtask( uint8_t dev_addr, cdch_data_t *p_cdc,
+                                                       uint8_t * p_mess, uint32_t mess_length,
+                                                       uint8_t *p_response );
+
+//--------------------------------------------------------------------+
+// APPLICATION API
+//--------------------------------------------------------------------+
+tusb_error_t tusbh_cdc_rndis_get_mac_addr(uint8_t dev_addr, uint8_t mac_address[6])
+{
+  ASSERT( tusbh_cdc_rndis_is_mounted(dev_addr),  TUSB_ERROR_CDCH_DEVICE_NOT_MOUNTED);
+  ASSERT_PTR( mac_address,  TUSB_ERROR_INVALID_PARA);
+
+  memcpy(mac_address, rndish_data[dev_addr-1].mac_address, 6);
+
+  return TUSB_ERROR_NONE;
+}
 
 //--------------------------------------------------------------------+
 // IMPLEMENTATION
@@ -117,7 +133,39 @@ void rndish_init(void)
 void rndish_close(uint8_t dev_addr)
 {
   osal_semaphore_reset( rndish_data[dev_addr-1].sem_notification_hdl );
+//  memclr_(&rndish_data[dev_addr-1], sizeof(rndish_data_t)); TODO need to move semaphore & its handle out before memclr
 }
+
+
+static rndis_msg_initialize_t const msg_init =
+{
+    .type          = RNDIS_MSG_INITIALIZE,
+    .length        = sizeof(rndis_msg_initialize_t),
+    .request_id    = 1, // TODO should use some magic number
+    .major_version = 1,
+    .minor_version = 0,
+    .max_xfer_size = 0x4000 // TODO mimic windows
+};
+
+static rndis_msg_query_t const msg_query_permanent_addr =
+{
+    .type          = RNDIS_MSG_QUERY,
+    .length        = sizeof(rndis_msg_query_t)+6,
+    .request_id    = 1,
+    .oid           = RNDIS_OID_802_3_PERMANENT_ADDRESS,
+    .buffer_length = 6,
+    .buffer_offset = 20,
+};
+
+static rndis_msg_set_t const msg_set_packet_filter =
+{
+    .type          = RNDIS_MSG_SET,
+    .length        = sizeof(rndis_msg_set_t)+4,
+    .request_id    = 1,
+    .oid           = RNDIS_OID_GEN_CURRENT_PACKET_FILTER,
+    .buffer_length = 4,
+    .buffer_offset = 20,
+};
 
 tusb_error_t rndish_open_subtask(uint8_t dev_addr, cdch_data_t *p_cdc)
 {
@@ -125,53 +173,55 @@ tusb_error_t rndish_open_subtask(uint8_t dev_addr, cdch_data_t *p_cdc)
 
   OSAL_SUBTASK_BEGIN
 
-  //------------- Send RNDIS Message Initialize -------------//
-  *((rndis_msg_initialize_t*) msg_payload) = (rndis_msg_initialize_t)
-                                              {
-                                                  .type          = RNDIS_MSG_INITIALIZE,
-                                                  .length        = sizeof(rndis_msg_initialize_t),
-                                                  .request_id    = 1, // TODO should use some magic number
-                                                  .major_version = 1,
-                                                  .minor_version = 0,
-                                                  .max_xfer_size = 0x4000 // TODO mimic windows
-                                              };
-
+  //------------- Message Initialize -------------//
+  memcpy(msg_payload, &msg_init, sizeof(rndis_msg_initialize_t));
   OSAL_SUBTASK_INVOKED_AND_WAIT(
-    usbh_control_xfer_subtask( dev_addr, bm_request_type(TUSB_DIR_HOST_TO_DEV, TUSB_REQUEST_TYPE_CLASS, TUSB_REQUEST_RECIPIENT_INTERFACE),
-                               SEND_ENCAPSULATED_COMMAND, 0, p_cdc->interface_number,
-                               sizeof(rndis_msg_initialize_t), (uint8_t*) msg_payload ),
-    error
+      send_message_get_response_subtask( dev_addr, p_cdc,
+                                         msg_payload, sizeof(rndis_msg_initialize_t),
+                                         msg_payload),
+      error
   );
   if ( TUSB_ERROR_NONE != error )   SUBTASK_EXIT(error);
 
-  //------------- waiting for Response Available notification -------------//
-  (void) hcd_pipe_xfer(p_cdc->pipe_notification, msg_notification[dev_addr-1], 8, true);
-  osal_semaphore_wait(rndish_data[dev_addr-1].sem_notification_hdl, OSAL_TIMEOUT_NORMAL, &error);
-  if ( TUSB_ERROR_NONE != error )   SUBTASK_EXIT(error);
-  SUBTASK_ASSERT(msg_notification[dev_addr-1][0] == 1);
-
-  //------------- Get RNDIS Message Initialize Complete -------------//
-  OSAL_SUBTASK_INVOKED_AND_WAIT(
-    usbh_control_xfer_subtask( dev_addr, bm_request_type(TUSB_DIR_DEV_TO_HOST, TUSB_REQUEST_TYPE_CLASS, TUSB_REQUEST_RECIPIENT_INTERFACE),
-                               GET_ENCAPSULATED_RESPONSE, 0, p_cdc->interface_number,
-                               RNDIS_MSG_PAYLOAD_MAX, (uint8_t*) msg_payload ),
-    error
-  );
-  if ( TUSB_ERROR_NONE != error )   SUBTASK_EXIT(error);
-
+  // TODO currently not support multiple data packets per xfer
   rndis_msg_initialize_cmplt_t * const p_init_cmpt = (rndis_msg_initialize_cmplt_t *) msg_payload;
-
-   // TODO currently not support multiple data packets per xfer
   SUBTASK_ASSERT(p_init_cmpt->type == RNDIS_MSG_INITIALIZE_CMPLT && p_init_cmpt->status == RNDIS_STATUS_SUCCESS &&
                  p_init_cmpt->max_packet_per_xfer == 1 && p_init_cmpt->max_xfer_size <= RNDIS_MSG_PAYLOAD_MAX);
   rndish_data[dev_addr-1].max_xfer_size = p_init_cmpt->max_xfer_size;
 
+  //------------- Message Query 802.3 Permanent Address -------------//
+  memcpy(msg_payload, &msg_query_permanent_addr, sizeof(rndis_msg_query_t));
+  memclr_(msg_payload + sizeof(rndis_msg_query_t), 6); // 6 bytes for MAC address
 
+  OSAL_SUBTASK_INVOKED_AND_WAIT(
+      send_message_get_response_subtask( dev_addr, p_cdc,
+                                         msg_payload, sizeof(rndis_msg_query_t) + 6,
+                                         msg_payload),
+      error
+  );
+  if ( TUSB_ERROR_NONE != error )   SUBTASK_EXIT(error);
 
-  if ( tusbh_cdc_rndis_mounted_cb )
-  {
-    tusbh_cdc_rndis_mounted_cb(dev_addr);
-  }
+  rndis_msg_query_cmplt_t * const p_query_cmpt = (rndis_msg_query_cmplt_t *) msg_payload;
+  SUBTASK_ASSERT(p_query_cmpt->type == RNDIS_MSG_QUERY_CMPLT && p_query_cmpt->status == RNDIS_STATUS_SUCCESS);
+  memcpy(rndish_data[dev_addr-1].mac_address, msg_payload + 8 + p_query_cmpt->buffer_offset, 6);
+
+  //------------- Set OID_GEN_CURRENT_PACKET_FILTER to (DIRECTED | MULTICAST | BROADCAST) -------------//
+  memcpy(msg_payload, &msg_set_packet_filter, sizeof(rndis_msg_set_t));
+  memclr_(msg_payload + sizeof(rndis_msg_set_t), 4); // 4 bytes for filter flags
+  ((rndis_msg_set_t*) msg_payload)->oid_buffer[0] = (RNDIS_PACKET_TYPE_DIRECTED | RNDIS_PACKET_TYPE_MULTICAST | RNDIS_PACKET_TYPE_BROADCAST);
+
+  OSAL_SUBTASK_INVOKED_AND_WAIT(
+      send_message_get_response_subtask( dev_addr, p_cdc,
+                                         msg_payload, sizeof(rndis_msg_set_t) + 4,
+                                         msg_payload),
+      error
+  );
+  if ( TUSB_ERROR_NONE != error )   SUBTASK_EXIT(error);
+
+  rndis_msg_set_cmplt_t * const p_set_cmpt = (rndis_msg_set_cmplt_t *) msg_payload;
+  SUBTASK_ASSERT(p_set_cmpt->type == RNDIS_MSG_SET_CMPLT && p_set_cmpt->status == RNDIS_STATUS_SUCCESS);
+
+  tusbh_cdc_rndis_mounted_cb(dev_addr);
 
   OSAL_SUBTASK_END
 }
@@ -184,4 +234,62 @@ void rndish_xfer_isr(cdch_data_t *p_cdc, pipe_handle_t pipe_hdl, tusb_event_t ev
   }
 }
 
+//--------------------------------------------------------------------+
+// INTERNAL & HELPER
+//--------------------------------------------------------------------+
+static tusb_error_t send_message_get_response_subtask( uint8_t dev_addr, cdch_data_t *p_cdc,
+                                                       uint8_t * p_mess, uint32_t mess_length,
+                                                       uint8_t *p_response)
+{
+  tusb_error_t error;
+
+  OSAL_SUBTASK_BEGIN
+
+  //------------- Send RNDIS Control Message -------------//
+  OSAL_SUBTASK_INVOKED_AND_WAIT(
+      usbh_control_xfer_subtask( dev_addr, bm_request_type(TUSB_DIR_HOST_TO_DEV, TUSB_REQUEST_TYPE_CLASS, TUSB_REQUEST_RECIPIENT_INTERFACE),
+                                 CDC_REQUEST_SEND_ENCAPSULATED_COMMAND, 0, p_cdc->interface_number,
+                                 mess_length, p_mess),
+      error
+  );
+  if ( TUSB_ERROR_NONE != error )   SUBTASK_EXIT(error);
+
+  //------------- waiting for Response Available notification -------------//
+  (void) hcd_pipe_xfer(p_cdc->pipe_notification, msg_notification[dev_addr-1], 8, true);
+  osal_semaphore_wait(rndish_data[dev_addr-1].sem_notification_hdl, OSAL_TIMEOUT_NORMAL, &error);
+  if ( TUSB_ERROR_NONE != error )   SUBTASK_EXIT(error);
+  SUBTASK_ASSERT(msg_notification[dev_addr-1][0] == 1);
+
+  //------------- Get RNDIS Message Initialize Complete -------------//
+  OSAL_SUBTASK_INVOKED_AND_WAIT(
+    usbh_control_xfer_subtask( dev_addr, bm_request_type(TUSB_DIR_DEV_TO_HOST, TUSB_REQUEST_TYPE_CLASS, TUSB_REQUEST_RECIPIENT_INTERFACE),
+                               CDC_REQUEST_GET_ENCAPSULATED_RESPONSE, 0, p_cdc->interface_number,
+                               RNDIS_MSG_PAYLOAD_MAX, p_response),
+    error
+  );
+  if ( TUSB_ERROR_NONE != error )   SUBTASK_EXIT(error);
+
+  OSAL_SUBTASK_END
+}
+
+//static tusb_error_t send_process_msg_initialize_subtask(uint8_t dev_addr, cdch_data_t *p_cdc)
+//{
+//  tusb_error_t error;
+//
+//  OSAL_SUBTASK_BEGIN
+//
+//  *((rndis_msg_initialize_t*) msg_payload) = (rndis_msg_initialize_t)
+//                                            {
+//                                                .type          = RNDIS_MSG_INITIALIZE,
+//                                                .length        = sizeof(rndis_msg_initialize_t),
+//                                                .request_id    = 1, // TODO should use some magic number
+//                                                .major_version = 1,
+//                                                .minor_version = 0,
+//                                                .max_xfer_size = 0x4000 // TODO mimic windows
+//                                            };
+//
+//
+//
+//  OSAL_SUBTASK_END
+//}
 #endif

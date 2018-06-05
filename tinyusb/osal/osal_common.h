@@ -36,18 +36,8 @@
 */
 /**************************************************************************/
 
-/** \file
- *  \brief TBD
- *
- *  \note TBD
- */
-
-/** \ingroup TBD
- *  \defgroup TBD
- *  \brief TBD
- *
- *  @{
- */
+/** \ingroup group_osal
+ *  @{ */
 
 #ifndef _TUSB_OSAL_COMMON_H_
 #define _TUSB_OSAL_COMMON_H_
@@ -58,17 +48,25 @@
 
 #include "common/common.h"
 
+#ifdef __CC_ARM
+#pragma diag_suppress 66 // Suppress Keil warnings #66-D: enumeration value is out of "int" range
+#endif
+
 enum
 {
   OSAL_TIMEOUT_NOTIMEOUT    = 0,  // for use within ISR,  return immediately
-  OSAL_TIMEOUT_NORMAL       = 10, // default is 10 msec
-  OSAL_TIMEOUT_WAIT_FOREVER = 0x0EEEEEEE
+  OSAL_TIMEOUT_NORMAL       = 10*5, // default is 10 msec, FIXME [CMSIS-RTX] easily timeout with 10 msec
+  OSAL_TIMEOUT_WAIT_FOREVER = 0xFFFFFFFF
 };
+
+#ifdef __CC_ARM
+#pragma diag_default 66 // return Keil 66 to normal severity
+#endif
 
 static inline uint32_t osal_tick_from_msec(uint32_t msec) ATTR_CONST ATTR_ALWAYS_INLINE;
 static inline uint32_t osal_tick_from_msec(uint32_t msec)
 {
-  return  (msec * TUSB_CFG_OS_TICKS_PER_SECOND)/1000;
+  return  (msec * TUSB_CFG_TICKS_HZ)/1000;
 }
 
 #ifdef __cplusplus

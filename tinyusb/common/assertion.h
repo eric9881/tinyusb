@@ -36,18 +36,10 @@
 */
 /**************************************************************************/
 
-/** \file
- *  \brief TBD
- *
- *  \note TBD
- */
+/** \ingroup Group_Common
+ *  \defgroup group_assertion Assertion
+ *  @{ */
 
-/** \ingroup TBD
- *  \defgroup TBD
- *  \brief TBD
- *
- *  @{
- */
 
 #ifndef _TUSB_ASSERTION_H_
 #define _TUSB_ASSERTION_H_
@@ -58,26 +50,17 @@ extern "C"
 #endif
 
 #include "tusb_option.h"
+#include <stdbool.h>
+#include <stdint.h>
+#include "compiler/compiler.h"
+
 #include "hal/hal.h" // TODO find a way to break hal dependency
 
-//--------------------------------------------------------------------+
-// Compile-time Assert
-//--------------------------------------------------------------------+
-#ifdef __ICCARM__
-  #define STATIC_ASSERT static_assert
-#else
-  #if defined __COUNTER__ && __COUNTER__ != __COUNTER__
-    #define _ASSERT_COUNTER __COUNTER__
-  #else
-    #define _ASSERT_COUNTER __LINE__
-  #endif
+#define VOID_RETURN
 
-  #define STATIC_ASSERT(const_expr, message) enum { XSTRING_CONCAT_(static_assert_, _ASSERT_COUNTER) = 1/(!!(const_expr)) }
-#endif
-
-  //#if ( defined CFG_PRINTF_UART || defined CFG_PRINTF_USBCDC || defined CFG_PRINTF_DEBUG )
-#if TUSB_CFG_DEBUG == 3
-  #define _PRINTF(...)	printf(__VA_ARGS__) // PRINTF
+//#if ( defined CFG_PRINTF_UART || defined CFG_PRINTF_USBCDC || defined CFG_PRINTF_DEBUG )
+#if TUSB_CFG_DEBUG
+  #define _PRINTF(...)	printf(__VA_ARGS__)
 #else
   #define _PRINTF(...)
 #endif
@@ -86,16 +69,13 @@ extern "C"
 // Assert Helper
 //--------------------------------------------------------------------+
 #ifndef _TEST_
-  #define ASSERT_MESSAGE(format, ...)\
-    _PRINTF("Assert at %s: %s: %d: " format "\n", __BASE_FILE__, __PRETTY_FUNCTION__, __LINE__, __VA_ARGS__)
-#else
-  #define ASSERT_MESSAGE(format, ...)\
-    _PRINTF("%d:note: Assert " format "\n", __LINE__, __VA_ARGS__)
+  #define _ASSERT_MESSAGE(format, ...) _PRINTF("Assert at %s: %s: %d: " format "\n", __BASE_FILE__, __func__ , __LINE__, __VA_ARGS__)
+#else // TODO remove this
+  #define _ASSERT_MESSAGE(format, ...) _PRINTF("%d:note: Assert " format "\n", __LINE__, __VA_ARGS__)
 #endif
 
 #ifndef _TEST_ASSERT_
-  #define ASSERT_ERROR_HANDLER(x, para)  \
-    return (x)
+  #define ASSERT_ERROR_HANDLER(x, para) return x
 #else
   #define ASSERT_ERROR_HANDLER(x, para)  Throw(x)
 #endif
@@ -104,11 +84,8 @@ extern "C"
   do{\
     setup_statement;\
 	  if (!(condition)) {\
-	    if (hal_debugger_is_attached()){\
-	      hal_debugger_breakpoint();\
-	    }else{\
-	      ASSERT_MESSAGE(format, __VA_ARGS__);\
-	    }\
+	    hal_debugger_breakpoint();\
+	    _ASSERT_MESSAGE(format, __VA_ARGS__);\
 	    error_handler(error, handler_para);\
 	  }\
 	}while(0)
@@ -132,13 +109,15 @@ extern "C"
 #define ASSERT(...)                      ASSERT_TRUE(__VA_ARGS__)
 #define ASSERT_TRUE(condition  , error)  ASSERT_DEFINE( , (condition), error, "%s", "evaluated to false")
 #define ASSERT_FALSE(condition , error)  ASSERT_DEFINE( ,!(condition), error, "%s", "evaluated to true")
+#define ASSERT_FAILED(error)             ASSERT_DEFINE( , false, error, "%s", "FAILED")
+#define ASSERT_FAILED_MSG(error, msg)    ASSERT_DEFINE( , false, error, "FAILED: %s", msg)
 
 //--------------------------------------------------------------------+
 // Pointer Assert
 //--------------------------------------------------------------------+
-#define ASSERT_PTR(...)                    ASSERT_PTR_NOT_NULL(__VA_ARGS__)
+#define ASSERT_PTR(...)                     ASSERT_PTR_NOT_NULL(__VA_ARGS__)
 #define ASSERT_PTR_NOT_NULL(pointer, error) ASSERT_DEFINE( , NULL != (pointer), error, "%s", "pointer is NULL")
-#define ASSERT_PTR_NULL(pointer, error)    ASSERT_DEFINE( , NULL == (pointer), error, "%s", "pointer is not NULL")
+#define ASSERT_PTR_NULL(pointer, error)     ASSERT_DEFINE( , NULL == (pointer), error, "%s", "pointer is not NULL")
 
 //--------------------------------------------------------------------+
 // Integral Assert
@@ -172,7 +151,7 @@ extern "C"
 #define ASSERT_HEX_WITHIN(...) ASSERT_XXX_WITHIN("0x%x", __VA_ARGS__)
 
 //--------------------------------------------------------------------+
-// TODO Bin Assert
+// Bin Assert
 //--------------------------------------------------------------------+
 #define BIN8_PRINTF_PATTERN "%d%d%d%d%d%d%d%d"
 #define BIN8_PRINTF_CONVERT(byte)  \

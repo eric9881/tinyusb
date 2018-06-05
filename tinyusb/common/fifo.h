@@ -36,16 +36,9 @@
 */
 /**************************************************************************/
 
-/** \file
- *  \brief Error Header
- *
- *  \note TBD
- */
-
 /** \ingroup Group_Common
- *
- *  @{
- */
+ * \defgroup group_fifo fifo
+ *  @{ */
 
 #ifndef _TUSB_FIFO_H_
 #define _TUSB_FIFO_H_
@@ -59,36 +52,48 @@
 /** \struct fifo_t
  * \brief Simple Circular FIFO
  */
-typedef struct _fifo_t
+typedef struct
 {
-           uint8_t* buf          ; ///< buffer pointer
-           uint16_t size         ; ///< buffer size
-  volatile uint16_t len          ; ///< bytes in fifo
-  volatile uint16_t wr_ptr       ; ///< write pointer
-  volatile uint16_t rd_ptr       ; ///< read pointer
-           bool     overwritable ; ///< allow overwrite data when full
-//           IRQn_Type irq         ; ///< TODO (abstract later) interrupt used to lock fifo
+           uint8_t* const buffer    ; ///< buffer pointer
+           uint16_t const depth     ; ///< max items
+           uint16_t const item_size ; ///< size of each item
+  volatile uint16_t count           ; ///< number of items in queue
+  volatile uint16_t wr_idx          ; ///< write pointer
+  volatile uint16_t rd_idx          ; ///< read pointer
+           bool overwritable        ;
+  // IRQn_Type irq;
 } fifo_t;
 
-bool fifo_init(fifo_t* f, uint8_t* buffer, uint16_t size, bool overwritable); //, IRQn_Type irq);
-bool fifo_write(fifo_t* f, uint8_t data);
-bool fifo_read(fifo_t* f, uint8_t *data);
-uint16_t fifo_read_n(fifo_t* f, uint8_t * rx, uint16_t maxlen);
+#define FIFO_DEF(name, ff_depth, type, is_overwritable) /*, irq_mutex)*/ \
+  uint8_t name##_buffer[ff_depth*sizeof(type)];\
+  fifo_t name = {\
+      .buffer       = name##_buffer,\
+      .depth        = ff_depth,\
+      .item_size    = sizeof(type),\
+      .overwritable = is_overwritable,\
+      /*.irq          = irq_mutex*/\
+  }
+
+bool fifo_write(fifo_t* f, void const * p_data);
+bool fifo_read(fifo_t* f, void * p_buffer);
 void fifo_clear(fifo_t *f);
 
+static inline bool fifo_is_empty(fifo_t* f) ATTR_PURE ATTR_ALWAYS_INLINE;
 static inline bool fifo_is_empty(fifo_t* f)
 {
-  return (f->len == 0);
+  return (f->count == 0);
 }
 
+static inline bool fifo_is_full(fifo_t* f) ATTR_PURE ATTR_ALWAYS_INLINE;
 static inline bool fifo_is_full(fifo_t* f)
 {
-  return (f->len == f->size);
+  return (f->count == f->depth);
 }
 
+static inline uint16_t fifo_get_length(fifo_t* f) ATTR_PURE ATTR_ALWAYS_INLINE;
 static inline uint16_t fifo_get_length(fifo_t* f)
 {
-  return f->len;
+  return f->count;
 }
 
 #ifdef __cplusplus

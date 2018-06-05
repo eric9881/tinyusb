@@ -36,12 +36,6 @@
 */
 /**************************************************************************/
 
-/** \file
- *  \brief Tiny USB header
- *
- *  \note Tiny USB header Note
- */
-
 #ifndef _TUSB_H_
 #define _TUSB_H_
 
@@ -87,7 +81,11 @@
   #endif
 
   #if TUSB_CFG_DEVICE_CDC
-    #include "class/cdc.h"
+    #include "class/cdc_device.h"
+  #endif
+
+  #if TUSB_CFG_DEVICE_MSC
+    #include "class/msc_device.h"
   #endif
 #endif
 
@@ -95,23 +93,44 @@
 //--------------------------------------------------------------------+
 // APPLICATION API
 //--------------------------------------------------------------------+
+/** \ingroup group_application_api
+ *  @{ */
+
+/** \brief Initialize the usb stack
+ * \return Error Code of the \ref TUSB_ERROR enum
+ * \note   Function will initialize the stack according to configuration in the configure file (tusb_config.h)
+ */
 tusb_error_t tusb_init(void);
 
-// TODO merge with tick_tock
 #if TUSB_CFG_OS == TUSB_OS_NONE
+/** \brief Run all tinyusb's internal tasks (e.g host task, device task).
+ * \note   This function is only required when using no RTOS (\ref TUSB_CFG_OS == TUSB_OS_NONE). All the stack functions
+ *         & callback are invoked within this function, so it should be called periodically within the mainloop
+ *
+    @code
+    int main(void)
+    {
+      your_init_code();
+      tusb_init();
+
+      while(1) // the mainloop
+      {
+        your_application_code();
+
+        tusb_task_runner(); // handle tinyusb event, task etc ...
+      }
+    }
+    @endcode
+ *
+ */
 void tusb_task_runner(void);
 #endif
 
-#if TUSB_CFG_OS == TUSB_OS_NONE && !defined(_TEST_)
-static inline void tusb_tick_tock(void) ATTR_ALWAYS_INLINE;
-static inline void tusb_tick_tock(void)
-{
-  osal_tick_tock();
-}
-#endif
+/** @} */
 
 #ifdef __cplusplus
  }
 #endif
 
 #endif /* _TUSB_H_ */
+

@@ -39,7 +39,7 @@
 #include "common/common.h"
 #include "hal.h"
 
-#if MCU == MCU_LPC43XX
+#if TUSB_CFG_MCU == MCU_LPC43XX
 
 #include "lpc43xx_cgu.h"
 #include "lpc43xx_scu.h"
@@ -54,66 +54,78 @@ enum {
   LPC43XX_USBMODE_VBUS_HIGH = 1
 };
 
+static tusb_error_t hal_controller_reset(uint8_t coreid)
+{ // TODO timeout expired to prevent trap
+  volatile uint32_t * p_reg_usbcmd;
+
+  p_reg_usbcmd = (coreid ? &LPC_USB1->USBCMD_D : &LPC_USB0->USBCMD_D);
+// NXP chip powered with non-host mode --> sts bit is not correctly reflected
+  (*p_reg_usbcmd) |= BIT_(1);
+
+//  timeout_timer_t timeout;
+//  timeout_set(&timeout, 2); // should not take longer the time to stop controller
+  while( ((*p_reg_usbcmd) & BIT_(1)) /*&& !timeout_expired(&timeout)*/) {}
+//
+//  return timeout_expired(&timeout) ? TUSB_ERROR_OSAL_TIMEOUT : TUSB_ERROR_NONE;
+  return TUSB_ERROR_NONE;
+}
+
 tusb_error_t hal_init(void)
 {
-  //------------- USB0 Clock -------------//
-#if TUSB_CFG_CONTROLLER0_MODE
+  LPC_CREG->CREG0 &= ~(1<<5); /* Turn on the phy */
+
+  //------------- USB0 -------------//
+#if TUSB_CFG_CONTROLLER_0_MODE
   CGU_EnableEntity(CGU_CLKSRC_PLL0, DISABLE); /* Disable PLL first */
   ASSERT_INT( CGU_ERROR_SUCCESS, CGU_SetPLL0(), TUSB_ERROR_FAILED); /* the usb core require output clock = 480MHz */
   CGU_EntityConnect(CGU_CLKSRC_XTAL_OSC, CGU_CLKSRC_PLL0);
   CGU_EnableEntity(CGU_CLKSRC_PLL0, ENABLE);   /* Enable PLL after all setting is done */
-  LPC_CREG->CREG0 &= ~(1<<5); /* Turn on the phy */
 
   // reset controller & set role
-  #if TUSB_CFG_CONTROLLER0_MODE & TUSB_MODE_HOST
-    hcd_controller_reset(0); // TODO where to place prototype
+  ASSERT_STATUS( hal_controller_reset(0) );
+
+  #if TUSB_CFG_CONTROLLER_0_MODE & TUSB_MODE_HOST
     LPC_USB0->USBMODE_H = LPC43XX_USBMODE_HOST | (LPC43XX_USBMODE_VBUS_HIGH << 5);
   #else // TODO OTG
-//    dcd_controller_reset(0);
-//    LPC_USB0->USBMODE_D = LPC43XX_USBMODE_DEVICE;
-//    LPC_USB0->OTGSC = (1<<3) | (1<<0) /*| (1<<16)| (1<<24)| (1<<25)| (1<<26)| (1<<27)| (1<<28)| (1<<29)| (1<<30)*/;
-//    LPC_USB0->PORTSC1_D |= (1<<24); // force full speed
-//    dcd_controller_connect(0);
+    LPC_USB0->USBMODE_D = LPC43XX_USBMODE_DEVICE;
+    LPC_USB0->OTGSC = (1<<3) | (1<<0) /*| (1<<16)| (1<<24)| (1<<25)| (1<<26)| (1<<27)| (1<<28)| (1<<29)| (1<<30)*/;
+    #if TUSB_CFG_DEVICE_FULLSPEED // TODO for easy testing
+      LPC_USB0->PORTSC1_D |= (1<<24); // force full speed
+    #endif
   #endif
-
-  hal_interrupt_enable(0);
 #endif
 
-  //------------- USB1 Clock, only use on-chip FS PHY -------------//
-#if TUSB_CFG_CONTROLLER1_MODE
-  // TODO confirm whether device mode require P2_5 or not
+  //------------- USB1 -------------//
+#if TUSB_CFG_CONTROLLER_1_MODE
+  // Host require to config P2_5, TODO confirm whether device mode require P2_5 or not
   scu_pinmux(0x2, 5, MD_PLN | MD_EZI | MD_ZI, FUNC2);	// USB1_VBUS monitor presence, must be high for bus reset occur
 
   /* connect CLK_USB1 to 60 MHz clock */
   CGU_EntityConnect(CGU_CLKSRC_PLL1, CGU_BASE_USB1); /* FIXME Run base BASE_USB1_CLK clock from PLL1 (assume PLL1 is 60 MHz, no division required) */
-  //LPC_CREG->CREG0 &= ~(1<<5); /* Turn on the phy */
-  LPC_SCU->SFSUSB = (TUSB_CFG_CONTROLLER1_MODE & TUSB_MODE_HOST) ? 0x16 : 0x12; // enable USB1 with on-chip FS PHY
+  LPC_SCU->SFSUSB = (TUSB_CFG_CONTROLLER_1_MODE & TUSB_MODE_HOST) ? 0x16 : 0x12; // enable USB1 with on-chip FS PHY
 
-  #if TUSB_CFG_CONTROLLER1_MODE & TUSB_MODE_HOST
-    hcd_controller_reset(1); // TODO where to place prototype
+  ASSERT_STATUS( hal_controller_reset(1) );
+
+  #if TUSB_CFG_CONTROLLER_1_MODE & TUSB_MODE_HOST
     LPC_USB1->USBMODE_H = LPC43XX_USBMODE_HOST | (LPC43XX_USBMODE_VBUS_HIGH << 5);
   #else // TODO OTG
-//    dcd_controller_reset(1);
-    LPC_USB0->USBMODE_D = LPC43XX_USBMODE_DEVICE;
-    dcd_controller_connect(1);
+    LPC_USB1->USBMODE_D = LPC43XX_USBMODE_DEVICE;
   #endif
 
-  LPC_USB1->PORTSC1_D |= (1<<24); // TODO abtract, force port to fullspeed
-
-  hal_interrupt_enable(1);
+  LPC_USB1->PORTSC1_D |= (1<<24); // TODO abstract, force port to fullspeed
 #endif
 
   return TUSB_ERROR_NONE;
 }
 
-#if TUSB_CFG_CONTROLLER0_MODE
+#if TUSB_CFG_CONTROLLER_0_MODE
 void USB0_IRQHandler(void)
 {
   tusb_isr(0);
 }
 #endif
 
-#if TUSB_CFG_CONTROLLER1_MODE
+#if TUSB_CFG_CONTROLLER_1_MODE
 void USB1_IRQHandler(void)
 {
   tusb_isr(1);

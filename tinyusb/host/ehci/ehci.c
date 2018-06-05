@@ -38,7 +38,7 @@
 
 #include "common/common.h"
 
-#if MODE_HOST_SUPPORTED && (MCU == MCU_LPC43XX || MCU == MCU_LPC18XX)
+#if MODE_HOST_SUPPORTED && (TUSB_CFG_MCU == MCU_LPC43XX || TUSB_CFG_MCU == MCU_LPC18XX)
 //--------------------------------------------------------------------+
 // INCLUDE
 //--------------------------------------------------------------------+
@@ -57,18 +57,24 @@
 //--------------------------------------------------------------------+
 // INTERNAL OBJECT & FUNCTION DECLARATION
 //--------------------------------------------------------------------+
-STATIC_ ehci_data_t ehci_data TUSB_CFG_ATTR_USBRAM;
+TUSB_CFG_ATTR_USBRAM STATIC_VAR ehci_data_t ehci_data;
 
 #if EHCI_PERIODIC_LIST
 
-  #if (TUSB_CFG_CONTROLLER0_MODE & TUSB_MODE_HOST)
-  STATIC_ ehci_link_t period_frame_list0[EHCI_FRAMELIST_SIZE] ATTR_ALIGNED(4096) TUSB_CFG_ATTR_USBRAM;
-  STATIC_ASSERT( ALIGN_OF(period_frame_list0) == 4096, "Period Framelist must be 4k alginment"); // validation
+  #if (TUSB_CFG_CONTROLLER_0_MODE & TUSB_MODE_HOST)
+  TUSB_CFG_ATTR_USBRAM ATTR_ALIGNED(4096) STATIC_VAR ehci_link_t period_frame_list0[EHCI_FRAMELIST_SIZE];
+
+    #ifndef __ICCARM__ // IAR cannot able to determine the alignment with datalignment pragma
+    STATIC_ASSERT( ALIGN_OF(period_frame_list0) == 4096, "Period Framelist must be 4k alginment"); // validation
+    #endif
   #endif
 
-  #if (TUSB_CFG_CONTROLLER1_MODE & TUSB_MODE_HOST)
-  STATIC_ ehci_link_t period_frame_list1[EHCI_FRAMELIST_SIZE] ATTR_ALIGNED(4096) TUSB_CFG_ATTR_USBRAM;
-  STATIC_ASSERT( ALIGN_OF(period_frame_list1) == 4096, "Period Framelist must be 4k alginment"); // validation
+  #if (TUSB_CFG_CONTROLLER_1_MODE & TUSB_MODE_HOST)
+  TUSB_CFG_ATTR_USBRAM ATTR_ALIGNED(4096) STATIC_VAR ehci_link_t period_frame_list1[EHCI_FRAMELIST_SIZE];
+
+    #ifndef __ICCARM__ // IAR cannot able to determine the alignment with datalignment pragma
+    STATIC_ASSERT( ALIGN_OF(period_frame_list1) == 4096, "Period Framelist must be 4k alginment"); // validation
+    #endif
   #endif
 #endif
 
@@ -94,6 +100,13 @@ static inline ehci_qhd_t*    qhd_find_free (uint8_t dev_addr) ATTR_PURE ATTR_ALW
 static inline tusb_xfer_type_t qhd_get_xfer_type(ehci_qhd_t const * p_qhd) ATTR_ALWAYS_INLINE ATTR_PURE;
 STATIC_ INLINE_ ehci_qhd_t*  qhd_get_from_pipe_handle(pipe_handle_t pipe_hdl) ATTR_PURE ATTR_ALWAYS_INLINE;
 static inline pipe_handle_t  qhd_create_pipe_handle(ehci_qhd_t const * p_qhd, tusb_xfer_type_t xfer_type) ATTR_PURE ATTR_ALWAYS_INLINE;
+// determine if a queue head has bus-related error
+static inline bool qhd_has_xact_error(ehci_qhd_t * p_qhd) ATTR_ALWAYS_INLINE ATTR_PURE;
+static inline bool qhd_has_xact_error(ehci_qhd_t * p_qhd)
+{
+  return ( p_qhd->qtd_overlay.buffer_err ||p_qhd->qtd_overlay.babble_err || p_qhd->qtd_overlay.xact_err );
+  //p_qhd->qtd_overlay.non_hs_period_missed_uframe || p_qhd->qtd_overlay.pingstate_err TODO split transaction error
+}
 
 static void qhd_init(ehci_qhd_t *p_qhd, uint8_t dev_addr, uint16_t max_packet_size, uint8_t endpoint_addr, uint8_t xfer_type, uint8_t interval);
 
@@ -110,7 +123,7 @@ static ehci_link_t*  list_find_previous_item(ehci_link_t* p_head, ehci_link_t* p
 static tusb_error_t list_remove_qhd(ehci_link_t* p_head, ehci_link_t* p_remove);
 
 static tusb_error_t hcd_controller_init(uint8_t hostid) ATTR_WARN_UNUSED_RESULT;
-static tusb_error_t hcd_controller_stop(uint8_t hostid) ATTR_WARN_UNUSED_RESULT;
+static tusb_error_t hcd_controller_stop(uint8_t hostid) ATTR_WARN_UNUSED_RESULT ATTR_UNUSED;
 
 //--------------------------------------------------------------------+
 // USBH-HCD API
@@ -120,11 +133,11 @@ tusb_error_t hcd_init(void)
   //------------- Data Structure init -------------//
   memclr_(&ehci_data, sizeof(ehci_data_t));
 
-  #if (TUSB_CFG_CONTROLLER0_MODE & TUSB_MODE_HOST)
+  #if (TUSB_CFG_CONTROLLER_0_MODE & TUSB_MODE_HOST)
     ASSERT_STATUS (hcd_controller_init(0));
   #endif
 
-  #if (TUSB_CFG_CONTROLLER1_MODE & TUSB_MODE_HOST)
+  #if (TUSB_CFG_CONTROLLER_1_MODE & TUSB_MODE_HOST)
     ASSERT_STATUS (hcd_controller_init(1));
   #endif
 
@@ -140,12 +153,6 @@ void hcd_port_reset(uint8_t hostid)
 
   regs->portsc_bit.port_enable = 0; // disable port before reset
   regs->portsc_bit.port_reset = 1;
-
-#ifndef _TEST_
-  // NXP specific, port reset will automatically be 0 when reset sequence complete
-  // there is chance device is unplugged while reset sequence is not complete
-  while( regs->portsc_bit.port_reset) {} // TODO use task delay to remove blocking
-#endif
 }
 
 bool hcd_port_connect_status(uint8_t hostid)
@@ -155,7 +162,14 @@ bool hcd_port_connect_status(uint8_t hostid)
 
 tusb_speed_t hcd_port_speed_get(uint8_t hostid)
 {
-  return get_operational_register(hostid)->portsc_bit.nxp_port_speed; // NXP specific port speed
+  return (tusb_speed_t) get_operational_register(hostid)->portsc_bit.nxp_port_speed; // NXP specific port speed
+}
+
+// TODO refractor abtract later
+void hcd_port_unplug(uint8_t hostid)
+{
+	ehci_registers_t* const regs = get_operational_register(hostid);
+  regs->usb_cmd_bit.advacne_async = 1; // Async doorbell check EHCI 4.8.2 for operational details
 }
 
 //--------------------------------------------------------------------+
@@ -264,20 +278,6 @@ static tusb_error_t hcd_controller_stop(uint8_t hostid)
   return timeout_expired(&timeout) ? TUSB_ERROR_OSAL_TIMEOUT : TUSB_ERROR_NONE;
 }
 
-tusb_error_t hcd_controller_reset(uint8_t hostid)
-{
-  ehci_registers_t* const regs = get_operational_register(hostid);
-  timeout_timer_t timeout;
-
-// NXP chip powered with non-host mode --> sts bit is not correctly reflected
-  regs->usb_cmd_bit.reset = 1;
-
-  timeout_set(&timeout, 2); // should not take longer the time to stop controller
-  while( regs->usb_cmd_bit.reset && !timeout_expired(&timeout)) {}
-
-  return timeout_expired(&timeout) ? TUSB_ERROR_OSAL_TIMEOUT : TUSB_ERROR_NONE;
-}
-
 //--------------------------------------------------------------------+
 // CONTROL PIPE API
 //--------------------------------------------------------------------+
@@ -290,7 +290,6 @@ tusb_error_t  hcd_pipe_control_open(uint8_t dev_addr, uint8_t max_packet_size)
   if (dev_addr != 0)
   {
     //------------- insert to async list -------------//
-    // TODO might need to to disable async list first
     list_insert( (ehci_link_t*) get_async_head(usbh_devices[dev_addr].core_id),
                  (ehci_link_t*) p_qhd, EHCI_QUEUE_ELEMENT_QHD);
   }
@@ -367,6 +366,7 @@ pipe_handle_t hcd_pipe_open(uint8_t dev_addr, tusb_descriptor_endpoint_t const *
   if (p_endpoint_desc->bmAttributes.xfer == TUSB_XFER_ISOCHRONOUS)
     return null_handle; // TODO not support ISO yet
 
+  //------------- Prepare Queue Head -------------//
   ehci_qhd_t * const p_qhd = qhd_find_free(dev_addr);
   ASSERT_PTR(p_qhd, null_handle);
 
@@ -374,6 +374,7 @@ pipe_handle_t hcd_pipe_open(uint8_t dev_addr, tusb_descriptor_endpoint_t const *
             p_endpoint_desc->bmAttributes.xfer, p_endpoint_desc->bInterval );
   p_qhd->class_code = class_code;
 
+  //------------- Insert to Async List -------------//
   ehci_link_t * list_head;
 
   if (p_endpoint_desc->bmAttributes.xfer == TUSB_XFER_BULK)
@@ -394,7 +395,7 @@ pipe_handle_t hcd_pipe_open(uint8_t dev_addr, tusb_descriptor_endpoint_t const *
   return (pipe_handle_t) { .dev_addr = dev_addr, .xfer_type = p_endpoint_desc->bmAttributes.xfer, .index = qhd_get_index(p_qhd) };
 }
 
-tusb_error_t  hcd_pipe_xfer(pipe_handle_t pipe_hdl, uint8_t buffer[], uint16_t total_bytes, bool int_on_complete)
+tusb_error_t  hcd_pipe_queue_xfer(pipe_handle_t pipe_hdl, uint8_t buffer[], uint16_t total_bytes)
 {
   //------------- TODO pipe handle validate -------------//
 
@@ -406,15 +407,24 @@ tusb_error_t  hcd_pipe_xfer(pipe_handle_t pipe_hdl, uint8_t buffer[], uint16_t t
 
   qtd_init(p_qtd, (uint32_t) buffer, total_bytes);
   p_qtd->pid = p_qhd->pid_non_control;
-  p_qtd->int_on_complete = int_on_complete ? 1 : 0;
-  // do PING for Highspeed Bulk OUT, EHCI section 4.11
-  if (pipe_hdl.xfer_type == TUSB_XFER_BULK && p_qhd->endpoint_speed == TUSB_SPEED_HIGH && p_qtd->pid == EHCI_PID_OUT)
-  {
-    p_qtd->pingstate_err = 1;
-  }
 
   //------------- insert TD to TD list -------------//
   qtd_insert_to_qhd(p_qhd, p_qtd);
+
+  return TUSB_ERROR_NONE;
+}
+
+tusb_error_t  hcd_pipe_xfer(pipe_handle_t pipe_hdl, uint8_t buffer[], uint16_t total_bytes, bool int_on_complete)
+{
+  ASSERT_STATUS ( hcd_pipe_queue_xfer(pipe_hdl, buffer, total_bytes) );
+
+  ehci_qhd_t *p_qhd = qhd_get_from_pipe_handle(pipe_hdl);
+
+  if ( int_on_complete )
+  { // the just added qtd is pointed by list_tail
+    p_qhd->p_qtd_list_tail->int_on_complete = 1;
+  }
+  p_qhd->qtd_overlay.next.address = (uint32_t) p_qhd->p_qtd_list_head; // attach head QTD to QHD start transferring
 
   return TUSB_ERROR_NONE;
 }
@@ -429,6 +439,7 @@ tusb_error_t  hcd_pipe_close(pipe_handle_t pipe_hdl)
   ehci_qhd_t *p_qhd = qhd_get_from_pipe_handle( pipe_hdl );
 
   // async list needs async advance handshake to make sure host controller has released cached data
+  // non-control does not use async advance, it will eventually free by control pipe close
   // period list queue element is guarantee to be free in the next frame (1 ms)
   p_qhd->is_removing = 1; // TODO redundant, only apply to control queue head
 
@@ -450,10 +461,36 @@ tusb_error_t  hcd_pipe_close(pipe_handle_t pipe_hdl)
   return TUSB_ERROR_NONE;
 }
 
-bool hcd_pipe_is_idle(pipe_handle_t pipe_hdl)
+bool hcd_pipe_is_busy(pipe_handle_t pipe_hdl)
 {
   ehci_qhd_t *p_qhd = qhd_get_from_pipe_handle( pipe_hdl );
-  return (p_qhd->p_qtd_list_head == NULL);
+  return !p_qhd->qtd_overlay.halted && (p_qhd->p_qtd_list_head != NULL);
+}
+
+bool hcd_pipe_is_error(pipe_handle_t pipe_hdl)
+{
+  ehci_qhd_t *p_qhd = qhd_get_from_pipe_handle( pipe_hdl );
+  return p_qhd->qtd_overlay.halted;
+}
+
+bool hcd_pipe_is_stalled(pipe_handle_t pipe_hdl)
+{
+  ehci_qhd_t *p_qhd = qhd_get_from_pipe_handle( pipe_hdl );
+  return p_qhd->qtd_overlay.halted && !qhd_has_xact_error(p_qhd);
+}
+
+uint8_t hcd_pipe_get_endpoint_addr(pipe_handle_t pipe_hdl)
+{
+  ehci_qhd_t *p_qhd = qhd_get_from_pipe_handle( pipe_hdl );
+  return p_qhd->endpoint_number + ( (p_qhd->pid_non_control == EHCI_PID_IN) ? TUSB_DIR_DEV_TO_HOST_MASK : 0);
+}
+
+tusb_error_t hcd_pipe_clear_stall(pipe_handle_t pipe_hdl)
+{
+  ehci_qhd_t *p_qhd = qhd_get_from_pipe_handle( pipe_hdl );
+  p_qhd->qtd_overlay.halted = 0;
+  // TODO reset data toggle ?
+  return TUSB_ERROR_NONE;
 }
 
 //--------------------------------------------------------------------+
@@ -486,12 +523,12 @@ static void async_advance_isr(ehci_qhd_t * const async_head)
       // Host Controller has cleaned up its cached data for this device, set state to unplug
       usbh_devices[relative_dev_addr+1].state = TUSB_DEVICE_STATE_UNPLUG;
 
-      for (uint8_t i=0; i<EHCI_MAX_QHD; i++) // free all qhd
+      for (uint8_t i=0; i<HCD_MAX_ENDPOINT; i++) // free all qhd
       {
         ehci_data.device[relative_dev_addr].qhd[i].used        = 0;
         ehci_data.device[relative_dev_addr].qhd[i].is_removing = 0;
       }
-      for (uint8_t i=0; i<EHCI_MAX_QTD; i++) // free all qtd
+      for (uint8_t i=0; i<HCD_MAX_XFER; i++) // free all qtd
       {
         ehci_data.device[relative_dev_addr].qtd[i].used = 0;
       }
@@ -507,11 +544,11 @@ static void port_connect_status_change_isr(uint8_t hostid)
   // NOTE There is an sequence plug->unplug->…..-> plug if device is powering with pre-plugged device
   if (regs->portsc_bit.current_connect_status)
   {
-    usbh_device_plugged_isr(hostid);
+    hcd_port_reset(hostid);
+    usbh_hcd_rhport_plugged_isr(hostid);
   }else // device unplugged
   {
-    usbh_device_unplugged_isr(hostid);
-    regs->usb_cmd_bit.advacne_async = 1; // Async doorbell check EHCI 4.8.2 for operational details
+    usbh_hcd_rhport_unplugged_isr(hostid);
   }
 }
 
@@ -522,7 +559,7 @@ static void qhd_xfer_complete_isr(ehci_qhd_t * p_qhd)
 
   // free all TDs from the head td to the first active TD
   while(p_qhd->p_qtd_list_head != NULL && !p_qhd->p_qtd_list_head->active
-      && max_loop < EHCI_MAX_QTD)
+      && max_loop < HCD_MAX_XFER)
   {
     // TD need to be freed and removed from qhd, before invoking callback
     bool is_ioc = (p_qhd->p_qtd_list_head->int_on_complete != 0);
@@ -555,7 +592,7 @@ static void async_list_xfer_complete_isr(ehci_qhd_t * const async_head)
     }
     p_qhd = qhd_next(p_qhd);
     max_loop++;
-  }while(p_qhd != async_head && max_loop < EHCI_MAX_QHD); // async list traversal, stop if loop around
+  }while(p_qhd != async_head && max_loop < HCD_MAX_ENDPOINT*TUSB_CFG_HOST_DEVICE_MAX); // async list traversal, stop if loop around
   // TODO abstract max loop guard for async
 }
 
@@ -569,7 +606,7 @@ static void period_list_xfer_complete_isr(uint8_t hostid, uint8_t interval_ms)
   // TODO abstract max loop guard for period
   while( !next_item.terminate &&
       !(interval_ms > 1 && period_1ms_addr == align32(next_item.address)) &&
-      max_loop < (EHCI_MAX_QHD + EHCI_MAX_ITD + EHCI_MAX_SITD))
+      max_loop < (HCD_MAX_ENDPOINT + EHCI_MAX_ITD + EHCI_MAX_SITD)*TUSB_CFG_HOST_DEVICE_MAX)
   {
     switch ( next_item.type )
     {
@@ -583,12 +620,11 @@ static void period_list_xfer_complete_isr(uint8_t hostid, uint8_t interval_ms)
       }
       break;
 
-      case EHCI_QUEUE_ELEMENT_ITD:
+      case EHCI_QUEUE_ELEMENT_ITD: // TODO support hs/fs ISO
       case EHCI_QUEUE_ELEMENT_SITD:
       case EHCI_QUEUE_ELEMENT_FSTN:
-      default:
-        ASSERT (false, (void) 0); // TODO support hs/fs ISO
-      break;
+				
+      default: break;
     }
 
     next_item = *list_next(&next_item);
@@ -599,32 +635,47 @@ static void period_list_xfer_complete_isr(uint8_t hostid, uint8_t interval_ms)
 
 static void qhd_xfer_error_isr(ehci_qhd_t * p_qhd)
 {
-  if (  (p_qhd->device_address != 0 && p_qhd->qtd_overlay.halted)   || // addr0 cannot be protocol STALL
-      p_qhd->qtd_overlay.buffer_err ||p_qhd->qtd_overlay.babble_err || p_qhd->qtd_overlay.xact_err )
-    //p_qhd->qtd_overlay.non_hs_period_missed_uframe || p_qhd->qtd_overlay.pingstate_err TODO split transaction error
+  if ( (p_qhd->device_address != 0 && p_qhd->qtd_overlay.halted) || // addr0 cannot be protocol STALL
+        qhd_has_xact_error(p_qhd) )
   { // current qhd has error in transaction
-    uint16_t total_xferred_bytes;
     tusb_xfer_type_t const xfer_type = qhd_get_xfer_type(p_qhd);
     tusb_event_t error_event;
 
     // no error bits are set, endpoint is halted due to STALL
-    error_event = ( !(p_qhd->qtd_overlay.buffer_err || p_qhd->qtd_overlay.babble_err ||
-        p_qhd->qtd_overlay.xact_err) ) ? TUSB_EVENT_XFER_STALLED : TUSB_EVENT_XFER_ERROR;
+    error_event = qhd_has_xact_error(p_qhd) ? TUSB_EVENT_XFER_ERROR : TUSB_EVENT_XFER_STALLED;
 
     p_qhd->total_xferred_bytes += p_qhd->p_qtd_list_head->expected_bytes - p_qhd->p_qtd_list_head->total_bytes;
 
-    hal_debugger_breakpoint();
+
+//    if ( TUSB_EVENT_XFER_ERROR == error_event )    hal_debugger_breakpoint(); // TODO skip unplugged device
 
     p_qhd->p_qtd_list_head->used = 0; // free QTD
     qtd_remove_1st_from_qhd(p_qhd);
 
-    // subtract setup size if it is control xfer
-    total_xferred_bytes = p_qhd->total_xferred_bytes - (xfer_type == TUSB_XFER_CONTROL ? min8_of(8, p_qhd->total_xferred_bytes) : 0);
+    if ( TUSB_XFER_CONTROL == xfer_type )
+    {
+      p_qhd->total_xferred_bytes -= min8_of(8, p_qhd->total_xferred_bytes); // subtract setup size
+
+      // control cannot be halted --> clear all qtd list
+      p_qhd->p_qtd_list_head = NULL;
+      p_qhd->p_qtd_list_tail = NULL;
+
+      p_qhd->qtd_overlay.next.terminate      = 1;
+      p_qhd->qtd_overlay.alternate.terminate = 1;
+      p_qhd->qtd_overlay.halted              = 0;
+
+      ehci_qtd_t *p_setup  = get_control_qtds(p_qhd->device_address);
+      ehci_qtd_t *p_data   = p_setup + 1;
+      ehci_qtd_t *p_status = p_setup + 2;
+
+      p_setup->used = p_data->used = p_status->used = 0;
+    }
 
     // call USBH callback
     usbh_xfer_isr( qhd_create_pipe_handle(p_qhd, xfer_type),
                    p_qhd->class_code, error_event,
-                   total_xferred_bytes);
+                   p_qhd->total_xferred_bytes);
+
     p_qhd->total_xferred_bytes = 0;
   }
 }
@@ -640,8 +691,9 @@ static void xfer_error_isr(uint8_t hostid)
     qhd_xfer_error_isr( p_qhd );
     p_qhd = qhd_next(p_qhd);
     max_loop++;
-  }while(p_qhd != async_head && max_loop < EHCI_MAX_QHD); // async list traversal, stop if loop around
+  }while(p_qhd != async_head && max_loop < HCD_MAX_ENDPOINT*TUSB_CFG_HOST_DEVICE_MAX); // async list traversal, stop if loop around
 
+  #if EHCI_PERIODIC_LIST
   //------------- TODO refractor period list -------------//
   uint32_t const period_1ms_addr = (uint32_t) get_period_head(hostid, 1);
   for (uint8_t interval_ms=1; interval_ms <= EHCI_FRAMELIST_SIZE; interval_ms *= 2)
@@ -652,7 +704,7 @@ static void xfer_error_isr(uint8_t hostid)
     // TODO abstract max loop guard for period
     while( !next_item.terminate &&
         !(interval_ms > 1 && period_1ms_addr == align32(next_item.address)) &&
-        period_max_loop < (EHCI_MAX_QHD + EHCI_MAX_ITD + EHCI_MAX_SITD))
+        period_max_loop < (HCD_MAX_ENDPOINT + EHCI_MAX_ITD + EHCI_MAX_SITD)*TUSB_CFG_HOST_DEVICE_MAX)
     {
       switch ( next_item.type )
       {
@@ -663,18 +715,18 @@ static void xfer_error_isr(uint8_t hostid)
         }
         break;
 
+				// TODO support hs/fs ISO
         case EHCI_QUEUE_ELEMENT_ITD:
         case EHCI_QUEUE_ELEMENT_SITD:
         case EHCI_QUEUE_ELEMENT_FSTN:
-        default:
-          ASSERT (false, (void) 0); // TODO support hs/fs ISO
-        break;
+        default: break;
       }
 
       next_item = *list_next(&next_item);
       period_max_loop++;
     }
   }
+  #endif
 }
 
 //------------- Host Controller Driver's Interrupt Handler -------------//
@@ -682,11 +734,12 @@ void hcd_isr(uint8_t hostid)
 {
   ehci_registers_t* const regs = get_operational_register(hostid);
 
-  uint32_t int_status = regs->usb_sts & regs->usb_int_enable;
+  uint32_t int_status = regs->usb_sts;
+  int_status &= regs->usb_int_enable;
+  
   regs->usb_sts |= int_status; // Acknowledge handled interrupt
 
-  if (int_status == 0)
-    return;
+  if (int_status == 0) return;
 
   if (int_status & EHCI_INT_MASK_PORT_CHANGE)
   {
@@ -741,24 +794,24 @@ STATIC_ INLINE_ ehci_link_t* get_period_frame_list(uint8_t hostid)
 {
   switch(hostid)
   {
-#if (TUSB_CFG_CONTROLLER0_MODE & TUSB_MODE_HOST)
+#if (TUSB_CFG_CONTROLLER_0_MODE & TUSB_MODE_HOST)
     case 0:
       return period_frame_list0;
 #endif
 
-#if (TUSB_CFG_CONTROLLER1_MODE & TUSB_MODE_HOST)
+#if (TUSB_CFG_CONTROLLER_1_MODE & TUSB_MODE_HOST)
     case 1:
       return period_frame_list1;
 #endif
+	 
+    default: return NULL;
   }
-
-  return NULL;
 }
 #endif
 
 STATIC_ INLINE_ uint8_t hostid_to_data_idx(uint8_t hostid)
 {
-  #if (CONTROLLER_HOST_NUMBER == 1) && (TUSB_CFG_CONTROLLER1_MODE & TUSB_MODE_HOST)
+  #if (CONTROLLER_HOST_NUMBER == 1) && (TUSB_CFG_CONTROLLER_1_MODE & TUSB_MODE_HOST)
     (void) hostid;
     return 0;
   #else
@@ -798,11 +851,11 @@ static inline ehci_qhd_t* qhd_find_free (uint8_t dev_addr)
 {
   uint8_t relative_address = dev_addr-1;
   uint8_t index=0;
-  while( index<EHCI_MAX_QHD && ehci_data.device[relative_address].qhd[index].used )
+  while( index<HCD_MAX_ENDPOINT && ehci_data.device[relative_address].qhd[index].used )
   {
     index++;
   }
-  return (index < EHCI_MAX_QHD) ? &ehci_data.device[relative_address].qhd[index] : NULL;
+  return (index < HCD_MAX_ENDPOINT) ? &ehci_data.device[relative_address].qhd[index] : NULL;
 }
 
 static inline uint8_t qhd_get_index(ehci_qhd_t const * p_qhd)
@@ -845,12 +898,12 @@ static inline pipe_handle_t qhd_create_pipe_handle(ehci_qhd_t const * p_qhd, tus
 STATIC_ INLINE_ ehci_qtd_t* qtd_find_free(uint8_t dev_addr)
 {
   uint8_t index=0;
-  while( index<EHCI_MAX_QTD && ehci_data.device[dev_addr-1].qtd[index].used )
+  while( index<HCD_MAX_XFER && ehci_data.device[dev_addr-1].qtd[index].used )
   {
     index++;
   }
 
-  return (index < EHCI_MAX_QTD) ? &ehci_data.device[dev_addr-1].qtd[index] : NULL;
+  return (index < HCD_MAX_XFER) ? &ehci_data.device[dev_addr-1].qtd[index] : NULL;
 }
 
 static inline ehci_qtd_t* qtd_next(ehci_qtd_t const * p_qtd )
@@ -874,7 +927,6 @@ static inline void qtd_insert_to_qhd(ehci_qhd_t *p_qhd, ehci_qtd_t *p_qtd_new)
   if (p_qhd->p_qtd_list_head == NULL) // empty list
   {
     p_qhd->p_qtd_list_head               = p_qhd->p_qtd_list_tail = p_qtd_new;
-    p_qhd->qtd_overlay.next.address      = (uint32_t) p_qtd_new;
   }else
   {
     p_qhd->p_qtd_list_tail->next.address = (uint32_t) p_qtd_new;
@@ -884,7 +936,7 @@ static inline void qtd_insert_to_qhd(ehci_qhd_t *p_qhd, ehci_qtd_t *p_qtd_new)
 
 static void qhd_init(ehci_qhd_t *p_qhd, uint8_t dev_addr, uint16_t max_packet_size, uint8_t endpoint_addr, uint8_t xfer_type, uint8_t interval)
 {
-  // address 0 uses async head, which always on the list --> cannot be cleared (ehci halted otherwise)
+  // address 0 is used as async head, which always on the list --> cannot be cleared (ehci halted otherwise)
   if (dev_addr != 0)
   {
     memclr_(p_qhd, sizeof(ehci_qhd_t));
@@ -901,11 +953,12 @@ static void qhd_init(ehci_qhd_t *p_qhd, uint8_t dev_addr, uint16_t max_packet_si
   p_qhd->nak_count_reload                 = 0;
 
   // Bulk/Control -> smask = cmask = 0
+  // TODO Isochronous
   if (TUSB_XFER_INTERRUPT == xfer_type)
   {
     if (TUSB_SPEED_HIGH == p_qhd->endpoint_speed)
     {
-      ASSERT_INT_WITHIN(1, 16, interval, (void) 0);
+      ASSERT_INT_WITHIN(1, 16, interval, VOID_RETURN);
       if ( interval < 4) // sub milisecond interval
       {
         p_qhd->interval_ms     = 0;
@@ -918,7 +971,7 @@ static void qhd_init(ehci_qhd_t *p_qhd, uint8_t dev_addr, uint16_t max_packet_si
       }
     }else
     {
-      ASSERT( 0 != interval, (void) 0);
+      ASSERT( 0 != interval, VOID_RETURN);
       // Full/Low: 4.12.2.1 (EHCI) case 1 schedule start split at 1 us & complete split at 2,3,4 uframes
       p_qhd->interrupt_smask        = 0x01;
       p_qhd->non_hs_interrupt_cmask = BIN8(11100);
@@ -933,11 +986,6 @@ static void qhd_init(ehci_qhd_t *p_qhd, uint8_t dev_addr, uint16_t max_packet_si
   p_qhd->hub_port                = usbh_devices[dev_addr].hub_port;
   p_qhd->mult                    = 1; // TODO not use high bandwidth/park mode yet
 
-  //------------- active, but no TD list -------------//
-  p_qhd->qtd_overlay.halted              = 0;
-  p_qhd->qtd_overlay.next.terminate      = 1;
-  p_qhd->qtd_overlay.alternate.terminate = 1;
-
   //------------- HCD Management Data -------------//
   p_qhd->used            = 1;
   p_qhd->is_removing     = 0;
@@ -945,6 +993,14 @@ static void qhd_init(ehci_qhd_t *p_qhd, uint8_t dev_addr, uint16_t max_packet_si
   p_qhd->p_qtd_list_tail = NULL;
   p_qhd->pid_non_control = (endpoint_addr & 0x80) ? EHCI_PID_IN : EHCI_PID_OUT; // PID for TD under this endpoint
 
+  //------------- active, but no TD list -------------//
+  p_qhd->qtd_overlay.halted              = 0;
+  p_qhd->qtd_overlay.next.terminate      = 1;
+  p_qhd->qtd_overlay.alternate.terminate = 1;
+  if (TUSB_XFER_BULK == xfer_type && p_qhd->endpoint_speed == TUSB_SPEED_HIGH && p_qhd->pid_non_control == EHCI_PID_OUT)
+  {
+    p_qhd->qtd_overlay.pingstate_err = 1; // do PING for Highspeed Bulk OUT, EHCI section 4.11
+  }
 }
 
 static void qtd_init(ehci_qtd_t* p_qtd, uint32_t data_ptr, uint16_t total_bytes)
@@ -987,7 +1043,7 @@ static ehci_link_t* list_find_previous_item(ehci_link_t* p_head, ehci_link_t* p_
   while( (align32(p_prev->address) != (uint32_t) p_head)    && // not loop around
          (align32(p_prev->address) != (uint32_t) p_current) && // not found yet
          !p_prev->terminate                                 && // not advanceable
-         max_loop < EHCI_MAX_QHD)
+         max_loop < HCD_MAX_ENDPOINT)
   {
     p_prev = list_next(p_prev);
     max_loop++;

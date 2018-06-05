@@ -36,12 +36,9 @@
 */
 /**************************************************************************/
 
-/** 
- *  \addtogroup Group_ClassDriver Class Driver
- *  @{
- *  \defgroup Group_HID Human Interface Device
- *  @{
- */
+/** \ingroup group_class
+ *  \defgroup ClassDriver_HID Human Interface Device (HID)
+ *  @{ */
 
 #ifndef _TUSB_HID_H_
 #define _TUSB_HID_H_
@@ -52,39 +49,57 @@
  extern "C" {
 #endif
 
-enum {
-  HID_SUBCLASS_NONE = 0,
-  HID_SUBCLASS_BOOT = 1
-};
+//--------------------------------------------------------------------+
+// Common Definitions
+//--------------------------------------------------------------------+
+/** \defgroup ClassDriver_HID_Common Common Definitions
+ *  @{ */
 
-enum {
-  HID_PROTOCOL_NONE     = 0,
-  HID_PROTOCOL_KEYBOARD = 1,
-  HID_PROTOCOL_MOUSE    = 2
-};
+/// HID Subclass
+typedef enum
+{
+  HID_SUBCLASS_NONE = 0, ///< No Subclass
+  HID_SUBCLASS_BOOT = 1  ///< Boot Interface Subclass
+}hid_subclass_type_t;
 
-enum {
-  HID_DESC_TYPE_HID      = 0x21,
-  HID_DESC_TYPE_REPORT   = 0x22,
-  HID_DESC_TYPE_PHYSICAL = 0x23
-};
+/// HID Protocol
+typedef enum
+{
+  HID_PROTOCOL_NONE     = 0, ///< None
+  HID_PROTOCOL_KEYBOARD = 1, ///< Keyboard
+  HID_PROTOCOL_MOUSE    = 2  ///< Mouse
+}hid_protocol_type_t;
 
-enum {
-  HID_REQUEST_REPORT_INPUT = 1,
-  HID_REQUEST_REPORT_OUTPUT,
-  HID_REQUEST_REPORT_FEATURE
-};
+/// HID Descriptor Type
+typedef enum
+{
+  HID_DESC_TYPE_HID      = 0x21, ///< HID Descriptor
+  HID_DESC_TYPE_REPORT   = 0x22, ///< Report Descriptor
+  HID_DESC_TYPE_PHYSICAL = 0x23  ///< Physical Descriptor
+}hid_descriptor_type_t;
 
-enum {
-  HID_REQUEST_CONTROL_GET_REPORT   = 0x01,
-  HID_REQUEST_CONTROL_GET_IDLE     = 0x02,
-  HID_REQUEST_CONTROL_GET_PROTOCOL = 0x03,
-  HID_REQUEST_CONTROL_SET_REPORT   = 0x09,
-  HID_REQUEST_CONTROL_SET_IDLE     = 0x0a,
-  HID_REQUEST_CONTROL_SET_PROTOCOL = 0x0b
-};
+/// HID Request Report Type
+typedef enum
+{
+  HID_REQUEST_REPORT_INPUT = 1, ///< Input
+  HID_REQUEST_REPORT_OUTPUT,    ///< Output
+  HID_REQUEST_REPORT_FEATURE    ///< Feature
+}hid_request_report_type_t;
 
-typedef ATTR_PREPACKED struct ATTR_PACKED {
+/// HID Class Specific Control Request
+typedef enum
+{
+  HID_REQUEST_CONTROL_GET_REPORT   = 0x01, ///< Get Report
+  HID_REQUEST_CONTROL_GET_IDLE     = 0x02, ///< Get Idle
+  HID_REQUEST_CONTROL_GET_PROTOCOL = 0x03, ///< Get Protocol
+  HID_REQUEST_CONTROL_SET_REPORT   = 0x09, ///< Set Report
+  HID_REQUEST_CONTROL_SET_IDLE     = 0x0a, ///< Set Idle
+  HID_REQUEST_CONTROL_SET_PROTOCOL = 0x0b  ///< Set Protocol
+}hid_request_type_t;
+
+/// USB HID Descriptor
+typedef struct ATTR_PACKED
+{
   uint8_t  bLength;         /**< Numeric expression that is the total size of the HID descriptor */
   uint8_t  bDescriptorType; /**< Constant name specifying type of HID descriptor. */
 
@@ -96,130 +111,189 @@ typedef ATTR_PREPACKED struct ATTR_PACKED {
   uint16_t wReportLength;   /**< the total size of the Report descriptor. */
 } tusb_hid_descriptor_hid_t;
 
-/**
- *  \brief Standard HID Boot Protocol Mouse Report.
- *
- *  Type define for a standard Boot Protocol Mouse report
- */
-typedef ATTR_PACKED_STRUCT(struct)
+/// HID Country Code
+typedef enum
+{
+  HID_Local_NotSupported = 0   , ///< NotSupported
+  HID_Local_Arabic             , ///< Arabic
+  HID_Local_Belgian            , ///< Belgian
+  HID_Local_Canadian_Bilingual , ///< Canadian_Bilingual
+  HID_Local_Canadian_French    , ///< Canadian_French
+  HID_Local_Czech_Republic     , ///< Czech_Republic
+  HID_Local_Danish             , ///< Danish
+  HID_Local_Finnish            , ///< Finnish
+  HID_Local_French             , ///< French
+  HID_Local_German             , ///< German
+  HID_Local_Greek              , ///< Greek
+  HID_Local_Hebrew             , ///< Hebrew
+  HID_Local_Hungary            , ///< Hungary
+  HID_Local_International      , ///< International
+  HID_Local_Italian            , ///< Italian
+  HID_Local_Japan_Katakana     , ///< Japan_Katakana
+  HID_Local_Korean             , ///< Korean
+  HID_Local_Latin_American     , ///< Latin_American
+  HID_Local_Netherlands_Dutch  , ///< Netherlands/Dutch
+  HID_Local_Norwegian          , ///< Norwegian
+  HID_Local_Persian_Farsi      , ///< Persian (Farsi)
+  HID_Local_Poland             , ///< Poland
+  HID_Local_Portuguese         , ///< Portuguese
+  HID_Local_Russia             , ///< Russia
+  HID_Local_Slovakia           , ///< Slovakia
+  HID_Local_Spanish            , ///< Spanish
+  HID_Local_Swedish            , ///< Swedish
+  HID_Local_Swiss_French       , ///< Swiss/French
+  HID_Local_Swiss_German       , ///< Swiss/German
+  HID_Local_Switzerland        , ///< Switzerland
+  HID_Local_Taiwan             , ///< Taiwan
+  HID_Local_Turkish_Q          , ///< Turkish-Q
+  HID_Local_UK                 , ///< UK
+  HID_Local_US                 , ///< US
+  HID_Local_Yugoslavia         , ///< Yugoslavia
+  HID_Local_Turkish_F            ///< Turkish-F
+} hid_country_code_t;
+
+/** @} */
+
+//--------------------------------------------------------------------+
+// MOUSE
+//--------------------------------------------------------------------+
+/** \addtogroup ClassDriver_HID_Mouse Mouse
+ *  @{ */
+
+/// Standard HID Boot Protocol Mouse Report.
+typedef struct ATTR_PACKED
 {
   uint8_t buttons; /**< buttons mask for currently pressed buttons in the mouse. */
-  int8_t  x; /**< Current delta x movement of the mouse. */
-  int8_t  y; /**< Current delta y movement on the mouse. */
-} tusb_mouse_report_t;
+  int8_t  x;       /**< Current delta x movement of the mouse. */
+  int8_t  y;       /**< Current delta y movement on the mouse. */
+  int8_t  wheel;   /**< Current delta wheel movement on the mouse. */
+} hid_mouse_report_t;
 
-/**
- *  \brief Standard HID Boot Protocol Keyboard Report.
- *
- *  Type define for a standard Boot Protocol Keyboard report
- */
-typedef ATTR_PACKED_STRUCT(struct)
+/// Standard Mouse Buttons Bitmap
+typedef enum
 {
-  uint8_t modifier; /**< Keyboard modifier byte, indicating pressed modifier keys (a combination of HID_KEYBOARD_MODIFER_* masks). */
-  uint8_t reserved; /**< Reserved for OEM use, always set to 0. */
+	MOUSE_BUTTON_LEFT   = BIT_(0), ///< Left button
+	MOUSE_BUTTON_RIGHT  = BIT_(1), ///< Right button
+	MOUSE_BUTTON_MIDDLE = BIT_(2)  ///< Middle button
+}hid_mouse_button_bm_t;
+
+/// @}
+
+//--------------------------------------------------------------------+
+// Keyboard
+//--------------------------------------------------------------------+
+/** \addtogroup ClassDriver_HID_Keyboard Keyboard
+ *  @{ */
+
+/// Standard HID Boot Protocol Keyboard Report.
+typedef struct ATTR_PACKED
+{
+  uint8_t modifier;   /**< Keyboard modifier byte, indicating pressed modifier keys (a combination of HID_KEYBOARD_MODIFER_* masks). */
+  uint8_t reserved;   /**< Reserved for OEM use, always set to 0. */
   uint8_t keycode[6]; /**< Key codes of the currently pressed keys. */
-} tusb_keyboard_report_t;
+} hid_keyboard_report_t;
 
-/**
- * \brief buttons codes for HID mouse
- */
-enum {
-	HID_MOUSEBUTTON_LEFT   = BIT_(0),
-	HID_MOUSEBUTTON_RIGHT  = BIT_(1),
-	HID_MOUSEBUTTON_MIDDLE = BIT_(2)
-};
+/// Keyboard modifier codes bitmap
+typedef enum
+{
+	KEYBOARD_MODIFIER_LEFTCTRL   = BIT_(0), ///< Left Control
+	KEYBOARD_MODIFIER_LEFTSHIFT  = BIT_(1), ///< Left Shift
+	KEYBOARD_MODIFIER_LEFTALT    = BIT_(2), ///< Left Alt
+	KEYBOARD_MODIFIER_LEFTGUI    = BIT_(3), ///< Left Window
+	KEYBOARD_MODIFIER_RIGHTCTRL  = BIT_(4), ///< Right Control
+	KEYBOARD_MODIFIER_RIGHTSHIFT = BIT_(5), ///< Right Shift
+	KEYBOARD_MODIFIER_RIGHTALT   = BIT_(6), ///< Right Alt
+	KEYBOARD_MODIFIER_RIGHTGUI   = BIT_(7)  ///< Right Window
+}hid_keyboard_modifier_bm_t;
 
-/**
- * \brief KB modifier codes for HID KB
- */
-enum {
-	KEYBOARD_MODIFIER_LEFTCTRL   = BIT_(0),
-	KEYBOARD_MODIFIER_LEFTSHIFT  = BIT_(1),
-	KEYBOARD_MODIFIER_LEFTALT    = BIT_(2),
-	KEYBOARD_MODIFIER_LEFTGUI    = BIT_(3),
-	KEYBOARD_MODIFIER_RIGHTCTRL  = BIT_(4),
-	KEYBOARD_MODIFIER_RIGHTSHIFT = BIT_(5),
-	KEYBOARD_MODIFIER_RIGHTALT   = BIT_(6),
-	KEYBOARD_MODIFIER_RIGHTGUI   = BIT_(7)
-};
+typedef enum
+{
+  KEYBOARD_LED_NUMLOCK    = BIT_(0), ///< Num Lock LED
+  KEYBOARD_LED_CAPSLOCK   = BIT_(1), ///< Caps Lock LED
+  KEYBOARD_LED_SCROLLLOCK = BIT_(2), ///< Scroll Lock LED
+  KEYBOARD_LED_COMPOSE    = BIT_(3), ///< Composition Mode
+  KEYBOARD_LED_KANA       = BIT_(4) ///< Kana mode
+}hid_keyboard_led_bm_t;
+
+/// @}
 
 #define HID_KEYCODE_TABLE(ENTRY) \
-    ENTRY( 0x04, 'a', 'A' )\
-    ENTRY( 0x05, 'b', 'B' )\
-    ENTRY( 0x06, 'c', 'C' )\
-    ENTRY( 0x07, 'd', 'D' )\
-    ENTRY( 0x08, 'e', 'E' )\
-    ENTRY( 0x09, 'f', 'F' )\
-    ENTRY( 0x0a, 'g', 'G' )\
-    ENTRY( 0x0b, 'h', 'H' )\
-    ENTRY( 0x0c, 'i', 'I' )\
-    ENTRY( 0x0d, 'j', 'J' )\
-    ENTRY( 0x0e, 'k', 'K' )\
-    ENTRY( 0x0f, 'l', 'L' )\
+    ENTRY( 0x04, 'a'   , 'A'    )\
+    ENTRY( 0x05, 'b'   , 'B'    )\
+    ENTRY( 0x06, 'c'   , 'C'    )\
+    ENTRY( 0x07, 'd'   , 'D'    )\
+    ENTRY( 0x08, 'e'   , 'E'    )\
+    ENTRY( 0x09, 'f'   , 'F'    )\
+    ENTRY( 0x0a, 'g'   , 'G'    )\
+    ENTRY( 0x0b, 'h'   , 'H'    )\
+    ENTRY( 0x0c, 'i'   , 'I'    )\
+    ENTRY( 0x0d, 'j'   , 'J'    )\
+    ENTRY( 0x0e, 'k'   , 'K'    )\
+    ENTRY( 0x0f, 'l'   , 'L'    )\
+    ENTRY( 0x10, 'm'   , 'M'    )\
+    ENTRY( 0x11, 'n'   , 'N'    )\
+    ENTRY( 0x12, 'o'   , 'O'    )\
+    ENTRY( 0x13, 'p'   , 'P'    )\
+    ENTRY( 0x14, 'q'   , 'Q'    )\
+    ENTRY( 0x15, 'r'   , 'R'    )\
+    ENTRY( 0x16, 's'   , 'S'    )\
+    ENTRY( 0x17, 't'   , 'T'    )\
+    ENTRY( 0x18, 'u'   , 'U'    )\
+    ENTRY( 0x19, 'v'   , 'V'    )\
+    ENTRY( 0x1a, 'w'   , 'W'    )\
+    ENTRY( 0x1b, 'x'   , 'X'    )\
+    ENTRY( 0x1c, 'y'   , 'Y'    )\
+    ENTRY( 0x1d, 'z'   , 'Z'    )\
     \
-    ENTRY( 0x10, 'm', 'M' )\
-    ENTRY( 0x11, 'n', 'N' )\
-    ENTRY( 0x12, 'o', 'O' )\
-    ENTRY( 0x13, 'p', 'P' )\
-    ENTRY( 0x14, 'q', 'Q' )\
-    ENTRY( 0x15, 'r', 'R' )\
-    ENTRY( 0x16, 's', 'S' )\
-    ENTRY( 0x17, 't', 'T' )\
-    ENTRY( 0x18, 'u', 'U' )\
-    ENTRY( 0x19, 'v', 'V' )\
-    ENTRY( 0x1a, 'w', 'W' )\
-    ENTRY( 0x1b, 'x', 'X' )\
-    ENTRY( 0x1c, 'y', 'Y' )\
-    ENTRY( 0x1d, 'z', 'Z' )\
-    ENTRY( 0x1e, '1', '!' )\
-    ENTRY( 0x1f, '2', '@' )\
+    ENTRY( 0x1e, '1'   , '!'    )\
+    ENTRY( 0x1f, '2'   , '@'    )\
+    ENTRY( 0x20, '3'   , '#'    )\
+    ENTRY( 0x21, '4'   , '$'    )\
+    ENTRY( 0x22, '5'   , '%'    )\
+    ENTRY( 0x23, '6'   , '^'    )\
+    ENTRY( 0x24, '7'   , '&'    )\
+    ENTRY( 0x25, '8'   , '*'    )\
+    ENTRY( 0x26, '9'   , '('    )\
+    ENTRY( 0x27, '0'   , ')'    )\
     \
-    ENTRY( 0x20, '3', '#' )\
-    ENTRY( 0x21, '4', '$' )\
-    ENTRY( 0x22, '5', '%' )\
-    ENTRY( 0x23, '6', '^' )\
-    ENTRY( 0x24, '7', '&' )\
-    ENTRY( 0x25, '8', '*' )\
-    ENTRY( 0x26, '9', '(' )\
-    ENTRY( 0x27, '0', ')' )\
-    ENTRY( 0x28, '\r', '\r' )\
-    ENTRY( 0x29, '\e', '\e' )\
-    ENTRY( 0x2a, '\b', '\b' )\
-    ENTRY( 0x2b, '\t', '\t' )\
-    ENTRY( 0x2c, ' ', ' '  )\
-    ENTRY( 0x2d, '-', '_' )\
-    ENTRY( 0x2e, '=', '+' )\
-    ENTRY( 0x2f, '[', '{' )\
+    ENTRY( 0x28, '\r'  , '\r'   )\
+    ENTRY( 0x29, '\x1b', '\x1b' )\
+    ENTRY( 0x2a, '\b'  , '\b'   )\
+    ENTRY( 0x2b, '\t'  , '\t'   )\
+    ENTRY( 0x2c, ' '   , ' '    )\
+    ENTRY( 0x2d, '-'   , '_'    )\
+    ENTRY( 0x2e, '='   , '+'    )\
+    ENTRY( 0x2f, '['   , '{'    )\
+    ENTRY( 0x30, ']'   , '}'    )\
+    ENTRY( 0x31, '\\'  , '|'    )\
+    ENTRY( 0x32, '#'   , '~'    ) /* TODO non-US keyboard */ \
+    ENTRY( 0x33, ';'   , ':'    )\
+    ENTRY( 0x34, '\''  , '\"'   )\
+    ENTRY( 0x35, 0     , 0      )\
+    ENTRY( 0x36, ','   , '<'    )\
+    ENTRY( 0x37, '.'   , '>'    )\
+    ENTRY( 0x38, '/'   , '?'    )\
+    ENTRY( 0x39, 0     , 0      ) /* TODO CapsLock, non-locking key implementation*/ \
     \
-    ENTRY( 0x30, ']', '}' )\
-    ENTRY( 0x31, '\\', '|' )\
-    ENTRY( 0x32, '#', '~' ) /* TODO non-US keyboard */ \
-    ENTRY( 0x33, ';', ':' )\
-    ENTRY( 0x34, '\'', '\"' )\
-    ENTRY( 0x35, 0, 0 )\
-    ENTRY( 0x36, ',', '<' )\
-    ENTRY( 0x37, '.', '>' )\
-    ENTRY( 0x38, '/', '?' )\
-    ENTRY( 0x39, 0, 0 ) /* TODO CapsLock, non-locking key implementation*/ \
-    \
-    ENTRY( 0x54, '/', '/' )\
-    ENTRY( 0x55, '*', '*' )\
-    ENTRY( 0x56, '-', '-' )\
-    ENTRY( 0x57, '+', '+' )\
-    ENTRY( 0x58, '\r', '\r' )\
-    ENTRY( 0x59, '1', 0 ) /* numpad1 & end */ \
-    ENTRY( 0x5a, '2', 0 )\
-    ENTRY( 0x5b, '3', 0 )\
-    ENTRY( 0x5c, '4', 0 )\
-    ENTRY( 0x5d, '5', '5' )\
-    ENTRY( 0x5e, '6', 0 )\
-    ENTRY( 0x5f, '7', 0 )\
-    ENTRY( 0x60, '8', 0 )\
-    ENTRY( 0x61, '9', 0 )\
-    ENTRY( 0x62, '0', 0 )\
-    ENTRY( 0x63, '0', 0 )\
-    \
-    ENTRY( 0x67, '=', '=' )\
+    ENTRY( 0x54, '/'   , '/'    )\
+    ENTRY( 0x55, '*'   , '*'    )\
+    ENTRY( 0x56, '-'   , '-'    )\
+    ENTRY( 0x57, '+'   , '+'    )\
+    ENTRY( 0x58, '\r'  , '\r'   )\
+    ENTRY( 0x59, '1'   , 0      ) /* numpad1 & end */ \
+    ENTRY( 0x5a, '2'   , 0      )\
+    ENTRY( 0x5b, '3'   , 0      )\
+    ENTRY( 0x5c, '4'   , 0      )\
+    ENTRY( 0x5d, '5'   , '5'    )\
+    ENTRY( 0x5e, '6'   , 0      )\
+    ENTRY( 0x5f, '7'   , 0      )\
+    ENTRY( 0x60, '8'   , 0      )\
+    ENTRY( 0x61, '9'   , 0      )\
+    ENTRY( 0x62, '0'   , 0      )\
+    ENTRY( 0x63, '0'   , 0      )\
+    ENTRY( 0x67, '='   , '='    )\
+
+
 
 // TODO HID complete keycode table
 
@@ -239,49 +313,6 @@ enum {
 //
 //};
 
-/**
- * \brief Local Country code for HID
- */
-enum USB_HID_LOCAL_CODE
-{
-  HID_Local_NotSupported = 0,
-  HID_Local_Arabic,
-  HID_Local_Belgian,
-  HID_Local_Canadian_Bilingual,
-  HID_Local_Canadian_French,
-  HID_Local_Czech_Republic,
-  HID_Local_Danish,
-  HID_Local_Finnish,
-  HID_Local_French,
-  HID_Local_German,
-  HID_Local_Greek,
-  HID_Local_Hebrew,
-  HID_Local_Hungary,
-  HID_Local_International,
-  HID_Local_Italian,
-  HID_Local_Japan_Katakana,
-  HID_Local_Korean,
-  HID_Local_Latin_American,
-  HID_Local_Netherlands_Dutch,
-  HID_Local_Norwegian,
-  HID_Local_Persian_Farsi,
-  HID_Local_Poland,
-  HID_Local_Portuguese,
-  HID_Local_Russia,
-  HID_Local_Slovakia,
-  HID_Local_Spanish,
-  HID_Local_Swedish,
-  HID_Local_Swiss_French,
-  HID_Local_Swiss_German,
-  HID_Local_Switzerland,
-  HID_Local_Taiwan,
-  HID_Local_Turkish_Q,
-  HID_Local_UK,
-  HID_Local_US,
-  HID_Local_Yugoslavia,
-  HID_Local_Turkish_F
-};
-
 //--------------------------------------------------------------------+
 // REPORT DESCRIPTOR
 //--------------------------------------------------------------------+
@@ -292,7 +323,7 @@ enum USB_HID_LOCAL_CODE
 #define HID_REPORT_DATA_3(data) , U32_TO_U8S_LE(data)
 
 #define HID_REPORT_ITEM(data, tag, type, size) \
-  ((tag << 4) | (type << 2) | size) HID_REPORT_DATA_##size(data)
+  (((tag) << 4) | ((type) << 2) | (size)) HID_REPORT_DATA_##size(data)
 
 #define RI_TYPE_MAIN   0
 #define RI_TYPE_GLOBAL 1
@@ -494,11 +525,71 @@ enum {
   HID_USAGE_DESKTOP_SYSTEM_DISPLAY_LCD_AUTOSCALE          = 0xB7
 };
 
+
+/// HID Usage Table: Consumer Page (0x0C)
+/// Only contains controls that supported by Windows (whole list is too long)
+enum
+{
+  // Generic Control
+  HID_USAGE_CONSUMER_CONTROL                           = 0x0001,
+
+  // Power Control
+  HID_USAGE_CONSUMER_POWER                             = 0x0030,
+  HID_USAGE_CONSUMER_RESET                             = 0x0031,
+  HID_USAGE_CONSUMER_SLEEP                             = 0x0032,
+
+  // Screen Brightness
+  HID_USAGE_CONSUMER_BRIGHTNESS_INCREMENT              = 0x006F,
+  HID_USAGE_CONSUMER_BRIGHTNESS_DECREMENT              = 0x0070,
+
+  // These HID usages operate only on mobile systems (battery powered) and
+  // require Windows 8 (build 8302 or greater).
+  HID_USAGE_CONSUMER_WIRELESS_RADIO_CONTROLS           = 0x000C,
+  HID_USAGE_CONSUMER_WIRELESS_RADIO_BUTTONS            = 0x00C6,
+  HID_USAGE_CONSUMER_WIRELESS_RADIO_LED                = 0x00C7,
+  HID_USAGE_CONSUMER_WIRELESS_RADIO_SLIDER_SWITCH      = 0x00C8,
+
+  // Media Control
+  HID_USAGE_CONSUMER_PLAY_PAUSE                        = 0x00CD,
+  HID_USAGE_CONSUMER_SCAN_NEXT                         = 0x00B5,
+  HID_USAGE_CONSUMER_SCAN_PREVIOUS                     = 0x00B6,
+  HID_USAGE_CONSUMER_STOP                              = 0x00B7,
+  HID_USAGE_CONSUMER_VOLUME                            = 0x00E0,
+  HID_USAGE_CONSUMER_MUTE                              = 0x00E2,
+  HID_USAGE_CONSUMER_BASS                              = 0x00E3,
+  HID_USAGE_CONSUMER_TREBLE                            = 0x00E4,
+  HID_USAGE_CONSUMER_BASS_BOOST                        = 0x00E5,
+  HID_USAGE_CONSUMER_VOLUME_INCREMENT                  = 0x00E9,
+  HID_USAGE_CONSUMER_VOLUME_DECREMENT                  = 0x00EA,
+  HID_USAGE_CONSUMER_BASS_INCREMENT                    = 0x0152,
+  HID_USAGE_CONSUMER_BASS_DECREMENT                    = 0x0153,
+  HID_USAGE_CONSUMER_TREBLE_INCREMENT                  = 0x0154,
+  HID_USAGE_CONSUMER_TREBLE_DECREMENT                  = 0x0155,
+
+  // Application Launcher
+  HID_USAGE_CONSUMER_AL_CONSUMER_CONTROL_CONFIGURATION = 0x0183,
+  HID_USAGE_CONSUMER_AL_EMAIL_READER                   = 0x018A,
+  HID_USAGE_CONSUMER_AL_CALCULATOR                     = 0x0192,
+  HID_USAGE_CONSUMER_AL_LOCAL_BROWSER                  = 0x0194,
+
+  // Browser/Explorer Specific
+  HID_USAGE_CONSUMER_AC_SEARCH                         = 0x0221,
+  HID_USAGE_CONSUMER_AC_HOME                           = 0x0223,
+  HID_USAGE_CONSUMER_AC_BACK                           = 0x0224,
+  HID_USAGE_CONSUMER_AC_FORWARD                        = 0x0225,
+  HID_USAGE_CONSUMER_AC_STOP                           = 0x0226,
+  HID_USAGE_CONSUMER_AC_REFRESH                        = 0x0227,
+  HID_USAGE_CONSUMER_AC_BOOKMARKS                      = 0x022A,
+
+  // Mouse Horizontal scroll
+  HID_USAGE_CONSUMER_AC_PAN                            = 0x0238,
+};
+
+
 #ifdef __cplusplus
  }
 #endif
 
 #endif /* _TUSB_HID_H__ */
 
-/// @}
 /// @}

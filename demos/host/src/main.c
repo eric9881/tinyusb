@@ -43,25 +43,13 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "boards/board.h"
+#include "board.h"
 #include "tusb.h"
 
-#if TUSB_CFG_OS != TUSB_OS_NONE
-#include "app_os_prio.h"
-#endif
-
-#include "mouse_app.h"
-#include "keyboard_app.h"
-#include "cdc_serial_app.h"
-
-#if defined(__CODE_RED)
-  #include <cr_section_macros.h>
-  #include <NXP/crp.h>
-  // Variable to store CRP value in. Will be placed automatically
-  // by the linker when "Enable Code Read Protect" selected.
-  // See crp.h header for more information
-  __CRP const unsigned int CRP_WORD = CRP_NO_CRP ;
-#endif
+#include "mouse_host_app.h"
+#include "keyboard_host_app.h"
+#include "msc_host_app.h"
+#include "cdc_serial_host_app.h"
 
 //--------------------------------------------------------------------+
 // MACRO CONSTANT TYPEDEF
@@ -70,11 +58,7 @@
 //--------------------------------------------------------------------+
 // INTERNAL OBJECT & FUNCTION DECLARATION
 //--------------------------------------------------------------------+
-OSAL_TASK_FUNCTION( led_blinking_task ) (void* p_task_para);
-OSAL_TASK_DEF(led_blinking_task_def, "led blinking", led_blinking_task, 128, LED_BLINKING_APP_TASK_PRIO);
-
 void print_greeting(void);
-static inline void wait_blocking_ms(uint32_t ms);
 
 //--------------------------------------------------------------------+
 // IMPLEMENTATION
@@ -87,86 +71,47 @@ void os_none_start_scheduler(void)
   while (1)
   {
     tusb_task_runner();
-    keyboard_app_task(NULL);
-    mouse_app_task(NULL);
-    cdc_serial_app_task(NULL);
     led_blinking_task(NULL);
+
+    keyboard_host_app_task(NULL);
+    mouse_host_app_task(NULL);
+    msc_host_app_task(NULL);
+    cdc_serial_host_app_task(NULL);
   }
 }
 #endif
 
-//TODO try to run with optimization Os
 int main(void)
 {
-  board_init();
+#if TUSB_CFG_OS == TUSB_OS_CMSIS_RTX
+  osKernelInitialize(); // CMSIS RTX requires kernel init before any other OS functions
+#endif
 
-  // TODO blocking wait --> systick handler -->  ...... freeRTOS hardfault
-  //wait_blocking_ms(1000); // wait a bit for power stable
-  
-  // print_greeting(); TODO uart output before freeRTOS scheduler start will lead to hardfault
-  // find a way to fix this as tusb_init can output to uart when an error occurred
+  board_init();
+  print_greeting();
 
   tusb_init();
 
   //------------- application task init -------------//
-  (void) osal_task_create(&led_blinking_task_def);
+  led_blinking_init();
 
-#if TUSB_CFG_HOST_HID_KEYBOARD
-  keyboard_app_init();
-#endif
-
-#if TUSB_CFG_HOST_HID_MOUSE
-  mouse_app_init();
-#endif
-
-#if TUSB_CFG_HOST_CDC
-  cdc_serial_app_init();
-#endif
+  keyboard_host_app_init();
+  mouse_host_app_init();
+  msc_host_app_init();
+  cdc_serial_host_app_init();
 
   //------------- start OS scheduler (never return) -------------//
 #if TUSB_CFG_OS == TUSB_OS_FREERTOS
   vTaskStartScheduler();
-
 #elif TUSB_CFG_OS == TUSB_OS_NONE
   os_none_start_scheduler();
+#elif TUSB_CFG_OS == TUSB_OS_CMSIS_RTX
+  osKernelStart();
 #else
   #error need to start RTOS schduler
 #endif
 
-  //------------- this part of code should not be reached -------------//
-  hal_debugger_breakpoint();
-  while(1)
-  {
-
-  }
-
   return 0;
-}
-
-//--------------------------------------------------------------------+
-// BLINKING TASK
-//--------------------------------------------------------------------+
-OSAL_TASK_FUNCTION( led_blinking_task ) (void* p_task_para)
-{
-  {// task init, only executed exactly one time, real RTOS does not need this but none OS does
-    static bool is_init = false;
-    if (!is_init)
-    {
-      is_init = true;
-      print_greeting();
-    }
-  }
-
-  static uint32_t led_on_mask = 0;
-
-  OSAL_TASK_LOOP_BEGIN
-
-  osal_task_delay(1000);
-
-  board_leds(led_on_mask, 1 - led_on_mask);
-  led_on_mask = 1 - led_on_mask; // toggle
-
-  OSAL_TASK_LOOP_END
 }
 
 //--------------------------------------------------------------------+
@@ -174,23 +119,26 @@ OSAL_TASK_FUNCTION( led_blinking_task ) (void* p_task_para)
 //--------------------------------------------------------------------+
 void print_greeting(void)
 {
-  printf("\r\n\
---------------------------------------------------------------------\r\n\
--                     Host Demo (a tinyusb example)\r\n\
-- if you find any bugs or get any questions, feel free to file an\r\n\
-- issue at https://github.com/hathach/tinyusb\r\n\
---------------------------------------------------------------------\r\n\r\n"
+  char const * const rtos_name[] =
+  {
+      [TUSB_OS_NONE]      = "None",
+      [TUSB_OS_FREERTOS]  = "FreeRTOS",
+      [TUSB_OS_CMSIS_RTX] = "CMSIS-RTX"
+  };
+
+  puts("\n\
+--------------------------------------------------------------------\n\
+-                     Host Demo (a tinyusb example)\n\
+- if you find any bugs or get any questions, feel free to file an\n\
+- issue at https://github.com/hathach/tinyusb\n\
+--------------------------------------------------------------------\n"
   );
-}
 
-static inline void wait_blocking_us(volatile uint32_t us)
-{
-	us *= (SystemCoreClock / 1000000) / 3;
-	while(us--);
+  puts("This HOST demo is configured to support:");
+  printf("  - RTOS = %s\n", rtos_name[TUSB_CFG_OS]);
+  if (TUSB_CFG_HOST_HUB          ) puts("  - Hub (1 level only)");
+  if (TUSB_CFG_HOST_HID_MOUSE    ) puts("  - HID Mouse");
+  if (TUSB_CFG_HOST_HID_KEYBOARD ) puts("  - HID Keyboard");
+  if (TUSB_CFG_HOST_MSC          ) puts("  - Mass Storage");
+  if (TUSB_CFG_HOST_CDC          ) puts("  - Communication Device Class");
 }
-
-static inline void wait_blocking_ms(uint32_t ms)
-{
-	wait_blocking_us(ms * 1000);
-}
-
